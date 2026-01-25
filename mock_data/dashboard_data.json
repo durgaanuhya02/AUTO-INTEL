@@ -1,0 +1,219 @@
+{
+  "current_metrics": {
+    "revenue": 125000,
+    "orders": 450,
+    "customer_satisfaction": 4.2,
+    "delivery_delay": 2.3,
+    "churn_risk": 0.12
+  },
+  "alerts": [
+    {
+      "id": 1,
+      "title": "Revenue Drop Detected",
+      "description": "Revenue has decreased by 8% compared to last week",
+      "severity": "medium",
+      "metric_type": "revenue",
+      "current_value": 125000,
+      "agent_type": "observer",
+      "created_at": "2026-01-23T19:58:30.688319"
+    },
+    {
+      "id": 2,
+      "title": "High Churn Risk",
+      "description": "Customer churn risk is above normal threshold",
+      "severity": "high",
+      "metric_type": "churn_risk",
+      "current_value": 0.12,
+      "agent_type": "analyst",
+      "created_at": "2026-01-23T17:58:30.688402"
+    }
+  ],
+  "recent_decisions": [
+    {
+      "id": 1,
+      "title": "Promotional Campaign Recommendation",
+      "description": "Launch targeted promotional campaign to boost revenue",
+      "scenarios": [
+        {
+          "name": "10% Discount Campaign",
+          "description": "Offer 10% discount to high-value customers",
+          "confidence_score": 0.85,
+          "risk_score": 0.15,
+          "parameters": {
+            "discount": 0.1,
+            "target": "high_value"
+          },
+          "predicted_outcome": {
+            "revenue_increase": 15000,
+            "cost": 5000
+          }
+        }
+      ],
+      "recommended_scenario": "10% Discount Campaign",
+      "confidence_score": 0.85,
+      "financial_impact": 10000,
+      "requires_approval": true,
+      "reasoning": "Based on historical data, targeted promotions have shown 85% success rate",
+      "status": "pending",
+      "created_at": "2026-01-23T19:58:30.688455"
+    }
+  ],
+  "agent_statuses": [
+    {
+      "agent_type": "observer",
+      "status": "active",
+      "last_activity": "2026-01-23T19:58:30.688489",
+      "current_task": "Monitoring revenue metrics",
+      "metrics": {
+        "processed_count": 1250
+      }
+    },
+    {
+      "agent_type": "analyst",
+      "status": "active",
+      "last_activity": "2026-01-23T19:58:30.688521",
+      "current_task": "Analyzing churn patterns",
+      "metrics": {
+        "processed_count": 890
+      }
+    },
+    {
+      "agent_type": "simulation",
+      "status": "idle",
+      "last_activity": "2026-01-23T19:53:30.688549",
+      "metrics": {
+        "processed_count": 45
+      }
+    },
+    {
+      "agent_type": "decision",
+      "status": "active",
+      "last_activity": "2026-01-23T19:58:30.688586",
+      "current_task": "Evaluating promotion scenarios",
+      "metrics": {
+        "processed_count": 23
+      }
+    },
+    {
+      "agent_type": "governance",
+      "status": "active",
+      "last_activity": "2026-01-23T19:58:30.688612",
+      "current_task": "Reviewing pending approvals",
+      "metrics": {
+        "processed_count": 12
+      }
+    }
+  ],
+  "trends": {
+    "revenue": [
+      123591.03,
+      122644.99,
+      120033.32,
+      128030.42,
+      117145.96,
+      117559.32,
+      135718.85,
+      118777.41,
+      130145.72,
+      118404.12,
+      124577.09,
+      119384.47,
+      127612.76,
+      131803.31,
+      122253.5,
+      127593.35,
+      133960.42,
+      117403.2,
+      112765.09,
+      127540.05
+    ],
+    "orders": [
+      473.76,
+      473.58,
+      463.99,
+      451.71,
+      433.77,
+      417.6,
+      476.28,
+      427.8,
+      407.22,
+      464.89,
+      412.15,
+      485.56,
+      475.05,
+      459.04,
+      435.48,
+      426.63,
+      454.5,
+      480.72,
+      478.31,
+      455.08
+    ],
+    "customer_satisfaction": [
+      4.21,
+      3.9,
+      4.03,
+      4.59,
+      3.81,
+      4.2,
+      3.84,
+      4.16,
+      4.04,
+      3.94,
+      3.78,
+      3.92,
+      4.52,
+      4.48,
+      3.83,
+      4.34,
+      4.43,
+      3.84,
+      3.9,
+      4.27
+    ],
+    "delivery_delay": [
+      2.39,
+      2.13,
+      2.37,
+      2.08,
+      2.4,
+      2.18,
+      2.13,
+      2.33,
+      2.4,
+      2.18,
+      2.28,
+      2.47,
+      2.1,
+      2.3,
+      2.3,
+      2.47,
+      2.32,
+      2.1,
+      2.31,
+      2.51
+    ],
+    "churn_risk": [
+      0.13,
+      0.13,
+      0.12,
+      0.11,
+      0.13,
+      0.13,
+      0.12,
+      0.12,
+      0.13,
+      0.13,
+      0.13,
+      0.11,
+      0.13,
+      0.11,
+      0.11,
+      0.11,
+      0.11,
+      0.13,
+      0.13,
+      0.13
+    ]
+  }
+}

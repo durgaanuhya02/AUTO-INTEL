@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Enterprise Dashboard API</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Enterprise Dashboard API Test</h1>
+    <div id="results"></div>
+    
+    <button onclick="testDashboard()">Test Dashboard API</button>
+    <button onclick="testMetrics()">Test Real-time Metrics</button>
+    <button onclick="testIntegrations()">Test Integrations</button>
+    <button onclick="testSystemMetrics()">Test System Metrics</button>
+
+    <script>
+        const API_BASE = 'http://localhost:8001/api/v1';
+        
+        function addResult(test, success, data) {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `test-result ${success ? 'success' : 'error'}`;
+            div.innerHTML = `
+                <strong>${test}:</strong> ${success ? 'SUCCESS' : 'FAILED'}<br>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            `;
+            results.appendChild(div);
+        }
+        
+        async function testDashboard() {
+            try {
+                const response = await fetch(`${API_BASE}/dashboard`);
+                const data = await response.json();
+                addResult('Dashboard API', response.ok, data);
+            } catch (error) {
+                addResult('Dashboard API', false, error.message);
+            }
+        }
+        
+        async function testMetrics() {
+            try {
+                const response = await fetch(`${API_BASE}/metrics/real-time`);
+                const data = await response.json();
+                addResult('Real-time Metrics', response.ok, data);
+            } catch (error) {
+                addResult('Real-time Metrics', false, error.message);
+            }
+        }
+        
+        async function testIntegrations() {
+            try {
+                const response = await fetch(`${API_BASE}/enterprise/integrations/status`);
+                const data = await response.json();
+                addResult('Integrations Status', response.ok, data);
+            } catch (error) {
+                addResult('Integrations Status', false, error.message);
+            }
+        }
+        
+        async function testSystemMetrics() {
+            try {
+                const response = await fetch(`${API_BASE}/metrics/system`);
+                const data = await response.json();
+                addResult('System Metrics', response.ok, data);
+            } catch (error) {
+                addResult('System Metrics', false, error.message);
+            }
+        }
+        
+        // Auto-run tests on page load
+        window.onload = function() {
+            setTimeout(testDashboard, 500);
+            setTimeout(testMetrics, 1000);
+            setTimeout(testIntegrations, 1500);
+            setTimeout(testSystemMetrics, 2000);
+        };
+    </script>
+</body>
+</html>
