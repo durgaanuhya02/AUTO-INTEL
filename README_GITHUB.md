@@ -1,8 +1,8 @@
-# 🚀 Agentic AI E-commerce Analytics Platform
+# 🚀 AutoIntel - Enterprise AI Analytics Platform
 
 ## 🌟 **Enterprise-Grade Multi-Agent AI System**
 
-A production-ready, real-time e-commerce analytics platform powered by multiple AI agents, advanced machine learning, and live data processing. Built for **Team 49** by **Sweeyam**.
+A production-ready, real-time e-commerce analytics platform powered by multiple AI agents, advanced machine learning, and live data processing. Built by **Durga Anuhya** for enterprise-grade business intelligence.
 
 ### 🎯 **Project Overview**
 

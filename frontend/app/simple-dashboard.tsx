@@ -80,7 +80,7 @@ export default function SimpleDashboard() {
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-20 w-20 border-4 border-blue-400 border-t-transparent mx-auto mb-6"></div>
-          <h2 className="text-3xl font-bold text-white mb-2">Loading Agentic AI System</h2>
+          <h2 className="text-3xl font-bold text-white mb-2">Loading AutoIntel System</h2>
           <p className="text-blue-200">Initializing real-time analytics...</p>
         </div>
       </div>
@@ -110,7 +110,7 @@ export default function SimpleDashboard() {
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-white">
-                  Agentic AI Analytics Platform
+                  AutoIntel Analytics Platform
                 </h1>
                 <p className="text-sm text-blue-200">
                   Real-time Intelligence • {formatNumber(data.current_metrics.orders)} Orders • Live Data
