@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import AgentStatus from '../components/AgentStatus';
+import AlertPanel from '../components/AlertPanel';
+import DecisionPanel from '../components/DecisionPanel';
 import { 
   TrendingUp, TrendingDown, DollarSign, ShoppingCart, Users, Star,
   Activity, BarChart3, Database, Brain, Shield, Target, AlertTriangle,
@@ -177,7 +180,8 @@ export default function EnterpriseDashboard() {
     { id: 'overview', name: 'Executive Overview', icon: BarChart3 },
     { id: 'analytics', name: 'ML Analytics', icon: Brain },
     { id: 'data', name: 'Data Sources', icon: Database },
-    { id: 'agents', name: 'AI Agents', icon: Cpu }
+    { id: 'agents', name: 'AI Agents', icon: Cpu },
+    { id: 'live', name: 'Live Agent Pipeline', icon: Zap }
   ];
 
   return (
@@ -670,6 +674,23 @@ export default function EnterpriseDashboard() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'live' && (
+          <div className="bg-gray-900 rounded-xl p-6 space-y-8" data-testid="live-pipeline">
+            <section>
+              <h3 className="text-lg font-bold text-white mb-4">Agent Pipeline</h3>
+              <AgentStatus />
+            </section>
+            <section>
+              <h3 className="text-lg font-bold text-white mb-4">Alerts</h3>
+              <AlertPanel />
+            </section>
+            <section>
+              <h3 className="text-lg font-bold text-white mb-4">Decisions</h3>
+              <DecisionPanel />
+            </section>
           </div>
         )}
 

@@ -11,7 +11,7 @@ class Metric(Base):
     metric_type = Column(Enum(MetricType), nullable=False, index=True)
     value = Column(Float, nullable=False)
     timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
-    metadata = Column(JSON, nullable=True)
+    meta_data = Column("metadata", JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class Alert(Base):

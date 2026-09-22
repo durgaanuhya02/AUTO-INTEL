@@ -1,6 +1,7 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 import asyncio
 import json
 import logging
@@ -38,25 +39,21 @@ app = FastAPI(
     redoc_url="/redoc" if settings.environment == "development" else None,
 )
 
-# Add middleware (order matters!)
+# Add middleware (order matters! last added = outermost). Middleware can't be added once the
+# app has started, so the rate limiter resolves its Redis client lazily on first request.
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(SecurityMiddleware)
+app.add_middleware(RateLimitMiddleware)
 
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"] if settings.environment == "development" 
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"] if settings.environment == "development"
                   else ["https://yourdomain.com"],  # Update for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Rate limiting middleware (add after Redis is available)
-@app.on_event("startup")
-async def add_rate_limiting():
-    redis_client = await get_redis()
-    app.add_middleware(RateLimitMiddleware, redis_client=redis_client)
 
 # Initialize ML service on startup
 @app.on_event("startup")
@@ -85,33 +82,40 @@ async def initialize_ml_service():
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
-    
+
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
         logger.info(f"WebSocket connected. Total connections: {len(self.active_connections)}")
-    
+
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
         logger.info(f"WebSocket disconnected. Total connections: {len(self.active_connections)}")
-    
+
     async def broadcast(self, message: dict):
-        if self.active_connections:
-            message_str = json.dumps(message, default=str)
-            disconnected = []
-            
-            for connection in self.active_connections:
-                try:
-                    await connection.send_text(message_str)
-                except:
-                    disconnected.append(connection)
-            
-            # Remove disconnected connections
-            for connection in disconnected:
+        connections = list(self.active_connections)
+        if not connections:
+            return
+        message_str = json.dumps(message, default=str)
+
+        async def send(connection):
+            # A stalled client must not delay delivery to everyone else.
+            await asyncio.wait_for(connection.send_text(message_str), timeout=SEND_TIMEOUT_SECONDS)
+
+        results = await asyncio.gather(*(send(c) for c in connections), return_exceptions=True)
+        for connection, result in zip(connections, results):
+            if isinstance(result, Exception):
                 self.disconnect(connection)
 
+UNHEALTHY_STATUSES = {"unhealthy", "critical"}
+SEND_TIMEOUT_SECONDS = 5.0
 manager = ConnectionManager()
+KNOWN_METRICS = {"revenue", "orders", "churn_risk", "delivery_delay", "customer_satisfaction"}
+
+
+def _ws_error(code: str, detail: str = "") -> str:
+    return json.dumps({"type": "error", "error": code, "detail": detail})
 
 # Include API routes
 app.include_router(router, prefix="/api/v1")
@@ -121,25 +125,44 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            # Keep connection alive and listen for client messages
             data = await websocket.receive_text()
-            
-            # Handle client messages (like manual triggers)
+
             try:
                 message = json.loads(data)
-                if message.get("type") == "trigger_analysis":
-                    result = await orchestrator.trigger_manual_analysis(
-                        message.get("metric_type", "revenue"),
-                        message.get("current_value", 1000)
-                    )
-                    await websocket.send_text(json.dumps({
-                        "type": "analysis_triggered",
-                        "result": result
-                    }))
             except json.JSONDecodeError:
-                pass
-            
+                await websocket.send_text(_ws_error("invalid_json"))
+                continue
+            if not isinstance(message, dict):
+                await websocket.send_text(_ws_error("invalid_message", "expected a JSON object"))
+                continue
+
+            message_type = message.get("type")
+            if message_type == "ping":
+                await websocket.send_text(json.dumps({"type": "pong", "timestamp": datetime.utcnow().isoformat()}))
+
+            elif message_type == "trigger_analysis":
+                metric_type = message.get("metric_type", "revenue")
+                value = message.get("current_value", 1000)
+                if metric_type not in KNOWN_METRICS:
+                    await websocket.send_text(_ws_error("invalid_metric_type", str(metric_type)))
+                    continue
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value or abs(value) == float("inf"):
+                    await websocket.send_text(_ws_error("invalid_current_value"))
+                    continue
+                try:
+                    result = await orchestrator.trigger_manual_analysis(metric_type, float(value))
+                except Exception as e:
+                    logger.error(f"trigger_analysis failed: {e}")
+                    await websocket.send_text(_ws_error("trigger_failed"))
+                    continue
+                await websocket.send_text(json.dumps({"type": "analysis_triggered", "result": result}))
+
+            else:
+                await websocket.send_text(_ws_error("unknown_message_type", str(message_type)))
+
     except WebSocketDisconnect:
+        pass
+    finally:
         manager.disconnect(websocket)
 
 @app.get("/")
@@ -156,29 +179,37 @@ async def health_check():
     try:
         # Run comprehensive health check
         health_result = await health_checker.run_comprehensive_health_check()
-        
+
         # Get system metrics
         system_metrics = await system_monitor.get_system_metrics()
-        
+
         # Check for system alerts
         alerts = await alert_manager.check_system_alerts(system_metrics)
-        
-        return {
-            "status": health_result["overall_status"],
-            "timestamp": datetime.utcnow().isoformat(),
-            "health_checks": health_result["components"],
-            "system_metrics": system_metrics,
-            "alerts": alerts,
-            "version": "1.0.0"
-        }
-        
+
+        overall = health_result["overall_status"]
+        # Load balancers and `curl -f` health checks key off the HTTP status, not the body.
+        return JSONResponse(
+            status_code=503 if overall in UNHEALTHY_STATUSES else 200,
+            content={
+                "status": overall,
+                "timestamp": datetime.utcnow().isoformat(),
+                "health_checks": health_result["components"],
+                "system_metrics": system_metrics,
+                "alerts": alerts,
+                "version": "1.0.0"
+            }
+        )
+
     except Exception as e:
         logger.error(f"Health check failed: {e}")
-        return {
-            "status": "critical",
-            "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
-        }
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "critical",
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        )
 
 @app.get("/metrics/system")
 async def get_system_metrics():
@@ -187,13 +218,13 @@ async def get_system_metrics():
         import psutil
         import time
         from datetime import datetime
-        
+
         # Get system metrics
         cpu_percent = psutil.cpu_percent(interval=1)
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
         network = psutil.net_io_counters()
-        
+
         # Calculate network latency (simplified)
         start_time = time.time()
         try:
@@ -202,21 +233,21 @@ async def get_system_metrics():
             network_latency = (time.time() - start_time) * 1000
         except:
             network_latency = 0
-        
+
         # Get process info
         process = psutil.Process()
         process_memory = process.memory_info()
-        
+
         # Calculate uptime
         boot_time = psutil.boot_time()
         uptime = time.time() - boot_time
-        
+
         # Simulate some metrics
         active_connections = len(psutil.net_connections())
         requests_per_minute = 45  # This would come from actual request tracking
         error_rate = 0.5  # This would come from error tracking
         response_time = 150  # This would come from response time tracking
-        
+
         metrics = {
             "cpu_usage": cpu_percent,
             "memory_usage": memory.percent,
@@ -235,7 +266,7 @@ async def get_system_metrics():
             "network_bytes_sent": network.bytes_sent,
             "network_bytes_recv": network.bytes_recv
         }
-        
+
         return metrics
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching system metrics: {str(e)}")
@@ -244,11 +275,11 @@ async def get_system_metrics():
 async def broadcast_updates():
     """Background task to broadcast real-time updates to WebSocket clients"""
     redis_client = await get_redis()
-    
+
     # Subscribe to Redis channels for real-time updates
     pubsub = redis_client.pubsub()
     await pubsub.subscribe("agent:broadcast", "alerts", "decisions")
-    
+
     async for message in pubsub.listen():
         if message["type"] == "message":
             try:
@@ -260,15 +291,15 @@ async def broadcast_updates():
                         "data": data,
                         "timestamp": datetime.utcnow().isoformat()
                     })
-                
+
                 elif message["channel"] == b"alerts":
-                    alert_data = eval(message["data"].decode())  # Safe in controlled environment
+                    alert_data = json.loads(message["data"])
                     await manager.broadcast({
                         "type": "new_alert",
                         "data": alert_data,
                         "timestamp": datetime.utcnow().isoformat()
                     })
-                
+
                 elif message["channel"] == b"decisions":
                     decision_data = json.loads(message["data"])
                     await manager.broadcast({
@@ -276,46 +307,68 @@ async def broadcast_updates():
                         "data": decision_data,
                         "timestamp": datetime.utcnow().isoformat()
                     })
-                    
+
             except Exception as e:
                 logger.error(f"Error broadcasting update: {e}")
+
+background_tasks: set = set()
+
+
+def spawn_supervised(name: str, factory, restart_delay: float = 5.0):
+    """Run `factory()` as a background task and restart it if it raises.
+
+    Bare asyncio.create_task() tasks are garbage-collectable and die silently on the first
+    unhandled exception (e.g. a Redis blip), which is fatal for a 24/7 service.
+    """
+    async def runner():
+        while True:
+            try:
+                await factory()
+                return  # returned normally: the service chose to stop
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception(f"Background task '{name}' crashed; restarting in {restart_delay}s")
+                await asyncio.sleep(restart_delay)
+
+    task = asyncio.create_task(runner(), name=name)
+    background_tasks.add(task)
+    task.add_done_callback(background_tasks.discard)
+    return task
+
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize the system on startup"""
     logger.info("Starting Agentic AI Business Decision System...")
-    
+
     try:
         # Initialize Redis and cache
         redis_client = await get_redis()
         await redis_client.ping()
         logger.info("Redis connection established")
-        
+
         # Initialize cache manager
         cache_manager.redis_client = redis_client
-        
+
         # Initialize the orchestrator
         await orchestrator.initialize()
-        
+
         # Initialize enterprise services
         await real_time_ingestion.initialize()
         await enterprise_integrations.initialize()
         await advanced_analytics.initialize()
-        
-        # Start all services in the background
-        asyncio.create_task(orchestrator.start())
-        asyncio.create_task(real_time_ingestion.start_real_time_ingestion())
-        asyncio.create_task(enterprise_integrations.start_enterprise_sync())
-        asyncio.create_task(advanced_analytics.start_analytics_engine())
-        
-        # Start the broadcast task
-        asyncio.create_task(broadcast_updates())
-        
-        # Start system monitoring
-        asyncio.create_task(monitor_system_health())
-        
+
+        # Start all services in the background, restarting any that crash
+        spawn_supervised("orchestrator", orchestrator.start)
+        spawn_supervised("real_time_ingestion", real_time_ingestion.start_real_time_ingestion)
+        spawn_supervised("enterprise_sync", enterprise_integrations.start_enterprise_sync)
+        spawn_supervised("analytics_engine", advanced_analytics.start_analytics_engine)
+        spawn_supervised("broadcast_updates", broadcast_updates)
+        spawn_supervised("system_health", monitor_system_health)
+
         logger.info("System startup completed successfully")
-        
+
     except Exception as e:
         logger.error(f"Failed to start system: {e}")
         raise
@@ -326,14 +379,14 @@ async def monitor_system_health():
         try:
             # Get system metrics
             metrics = await system_monitor.get_system_metrics()
-            
+
             # Check for alerts
             alerts = await alert_manager.check_system_alerts(metrics)
-            
+
             # Log alerts
             for alert in alerts:
                 logger.warning(f"System Alert: {alert['title']} - {alert['description']}")
-            
+
             # Store metrics in Redis for monitoring dashboard
             redis_client = await get_redis()
             await redis_client.set(
@@ -341,10 +394,10 @@ async def monitor_system_health():
                 json.dumps(metrics, default=str),
                 ex=300  # 5 minutes
             )
-            
+
             # Wait 60 seconds before next check
             await asyncio.sleep(60)
-            
+
         except Exception as e:
             logger.error(f"Error in system health monitoring: {e}")
             await asyncio.sleep(30)
@@ -353,8 +406,11 @@ async def monitor_system_health():
 async def shutdown_event():
     """Cleanup on shutdown"""
     logger.info("Shutting down Agentic AI Business Decision System...")
-    
+
     try:
+        for task in list(background_tasks):
+            task.cancel()
+        await asyncio.gather(*background_tasks, return_exceptions=True)
         await orchestrator.stop()
         await real_time_ingestion.stop()
         # Enterprise integrations and analytics will stop when main loop ends

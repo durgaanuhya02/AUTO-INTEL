@@ -1,31 +1,22 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { AGENT_API_URL } from '../lib/config';
+import { DashboardDecision, toDecision, upsertById } from '../lib/adapters';
+import { useRealtime } from '../hooks/useWebSocket';
+import LiveStatusBadge from './LiveStatusBadge';
 import { 
   Target, Brain, CheckCircle, Clock, AlertTriangle, 
   TrendingUp, DollarSign, Users, Zap, ThumbsUp, ThumbsDown,
   Eye, Shield, MessageSquare
 } from 'lucide-react';
 
-interface Decision {
-  id: string;
-  title: string;
-  description: string;
-  action: string;
-  confidence: number;
-  impact: string;
-  reasoning: string;
-  status: 'pending' | 'approved' | 'rejected' | 'implemented';
-  timestamp: string;
-  agent: string;
-  category: 'pricing' | 'inventory' | 'marketing' | 'operations';
-  estimatedValue: number;
-  riskLevel: 'low' | 'medium' | 'high';
-}
+type Decision = DashboardDecision;
 
 export default function DecisionPanel() {
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDecisions();
@@ -33,97 +24,55 @@ export default function DecisionPanel() {
     return () => clearInterval(interval);
   }, []);
 
+  const { status } = useRealtime({
+    new_decision: (data) => {
+      const decision = toDecision(data);
+      if (decision) setDecisions((prev) => upsertById(prev, decision));
+    },
+  });
+
+  const [acting, setActing] = useState<string | null>(null);
+
+  const submitReview = async (decisionId: string, approved: boolean) => {
+    setActing(decisionId);
+    try {
+      const params = new URLSearchParams({
+        decision_id: decisionId,
+        approved: String(approved),
+        approver: 'dashboard-user',
+      });
+      const response = await fetch(`${AGENT_API_URL}/approve-decision?${params}`, { method: 'POST' });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || `HTTP ${response.status}`);
+      }
+      setError(null);
+      // The governance agent records the outcome and pushes it over the WebSocket; refetch as a fallback.
+      setTimeout(fetchDecisions, 1500);
+    } catch (err) {
+      console.error('Error submitting review:', err);
+      setError(err instanceof Error ? err.message : 'unknown error');
+    } finally {
+      setActing(null);
+    }
+  };
+
   const fetchDecisions = async () => {
     try {
-      const response = await fetch('http://localhost:8001/api/v1/decisions');
-      if (response.ok) {
-        const data = await response.json();
-        setDecisions(data.decisions || []);
-      } else {
-        // Mock decisions for demo
-        setDecisions([
-          {
-            id: '1',
-            title: 'Dynamic Pricing Adjustment',
-            description: 'Implement 8% price increase for high-demand electronics category',
-            action: 'Increase prices for electronics by 8% during peak hours (6-9 PM)',
-            confidence: 92.3,
-            impact: 'Revenue increase of $12,000-15,000 per week',
-            reasoning: 'ML analysis shows 85% price elasticity tolerance in electronics. Historical data indicates 8% increase yields optimal revenue without significant demand drop.',
-            status: 'pending',
-            timestamp: new Date(Date.now() - 1800000).toISOString(),
-            agent: 'Price Optimization Agent',
-            category: 'pricing',
-            estimatedValue: 13500,
-            riskLevel: 'low'
-          },
-          {
-            id: '2',
-            title: 'Customer Retention Campaign',
-            description: 'Launch targeted retention campaign for at-risk customers',
-            action: 'Send personalized 15% discount offers to 2,847 at-risk customers',
-            confidence: 87.6,
-            impact: 'Prevent 60-70% customer churn, retain $45K monthly revenue',
-            reasoning: 'Churn prediction model identifies customers with 78% likelihood to leave. Similar campaigns showed 68% retention success rate.',
-            status: 'approved',
-            timestamp: new Date(Date.now() - 3600000).toISOString(),
-            agent: 'Customer Analytics Agent',
-            category: 'marketing',
-            estimatedValue: 45000,
-            riskLevel: 'medium'
-          },
-          {
-            id: '3',
-            title: 'Inventory Rebalancing',
-            description: 'Redistribute slow-moving inventory across regions',
-            action: 'Transfer 1,200 units from São Paulo to Rio de Janeiro warehouses',
-            confidence: 94.1,
-            impact: 'Reduce storage costs by $8,000/month, improve availability',
-            reasoning: 'Demand forecasting shows 40% higher demand in Rio region. Current São Paulo inventory has 120-day turnover vs 45-day optimal.',
-            status: 'implemented',
-            timestamp: new Date(Date.now() - 7200000).toISOString(),
-            agent: 'Supply Chain Agent',
-            category: 'operations',
-            estimatedValue: 8000,
-            riskLevel: 'low'
-          },
-          {
-            id: '4',
-            title: 'Marketing Budget Reallocation',
-            description: 'Shift budget from low-performing channels to high-ROI channels',
-            action: 'Move $25K from traditional ads to social media and influencer marketing',
-            confidence: 89.4,
-            impact: 'Increase customer acquisition by 35%, improve ROI from 2.1x to 3.4x',
-            reasoning: 'Attribution analysis shows social media generates 3.4x ROI vs 1.8x for traditional channels. Target demographic (25-40) shows 67% higher engagement on social platforms.',
-            status: 'rejected',
-            timestamp: new Date(Date.now() - 10800000).toISOString(),
-            agent: 'Marketing Intelligence Agent',
-            category: 'marketing',
-            estimatedValue: 25000,
-            riskLevel: 'medium'
-          }
-        ]);
+      const response = await fetch(`${AGENT_API_URL}/decisions`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      const latestById = new Map<string, DashboardDecision>();
+      for (const raw of data.decisions || []) {
+        const decision = toDecision(raw);
+        if (decision && !latestById.has(decision.id)) latestById.set(decision.id, decision); // list is newest-first
       }
-    } catch (error) {
-      console.error('Error fetching decisions:', error);
-      // Mock data on error
-      setDecisions([
-        {
-          id: '1',
-          title: 'AI-Recommended Action Available',
-          description: 'System has identified optimization opportunities',
-          action: 'Review AI recommendations for business improvements',
-          confidence: 85.0,
-          impact: 'Potential business optimization',
-          reasoning: 'Multiple improvement opportunities detected',
-          status: 'pending',
-          timestamp: new Date().toISOString(),
-          agent: 'Decision Engine',
-          category: 'operations',
-          estimatedValue: 0,
-          riskLevel: 'low'
-        }
-      ]);
+      setDecisions(Array.from(latestById.values()));
+      setError(null);
+    } catch (err) {
+      // Never substitute made-up decisions: keep the last real data and surface the failure.
+      console.error('Error fetching decisions:', err);
+      setError(err instanceof Error ? err.message : 'unknown error');
     } finally {
       setLoading(false);
     }
@@ -215,6 +164,8 @@ export default function DecisionPanel() {
 
   return (
     <div className="space-y-6">
+      <LiveStatusBadge status={status} error={error} />
+
       {/* Decision Summary */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-yellow-500/10 backdrop-blur-sm rounded-lg border border-yellow-500/20 p-4">
@@ -357,15 +308,15 @@ export default function DecisionPanel() {
                 <div className="flex space-x-2">
                   {decision.status === 'pending' && (
                     <>
-                      <button className="flex items-center space-x-1 px-3 py-1 bg-green-500/20 text-green-300 rounded-lg text-sm hover:bg-green-500/30 transition-colors">
+                      <button onClick={() => submitReview(decision.id, true)} disabled={acting === decision.id} className="flex items-center space-x-1 px-3 py-1 disabled:opacity-50 bg-green-500/20 text-green-300 rounded-lg text-sm hover:bg-green-500/30 transition-colors">
                         <ThumbsUp className="w-4 h-4" />
                         <span>Approve</span>
                       </button>
-                      <button className="flex items-center space-x-1 px-3 py-1 bg-red-500/20 text-red-300 rounded-lg text-sm hover:bg-red-500/30 transition-colors">
+                      <button onClick={() => submitReview(decision.id, false)} disabled={acting === decision.id} className="flex items-center space-x-1 px-3 py-1 disabled:opacity-50 bg-red-500/20 text-red-300 rounded-lg text-sm hover:bg-red-500/30 transition-colors">
                         <ThumbsDown className="w-4 h-4" />
                         <span>Reject</span>
                       </button>
-                      <button className="flex items-center space-x-1 px-3 py-1 bg-blue-500/20 text-blue-300 rounded-lg text-sm hover:bg-blue-500/30 transition-colors">
+                      <button disabled title="Not available yet" className="flex items-center space-x-1 px-3 py-1 opacity-40 cursor-not-allowed bg-blue-500/20 text-blue-300 rounded-lg text-sm hover:bg-blue-500/30 transition-colors">
                         <MessageSquare className="w-4 h-4" />
                         <span>Discuss</span>
                       </button>

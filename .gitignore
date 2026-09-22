@@ -116,3 +116,7 @@ htmlcov/
 # Local development files
 *.local
 .env.local
+# Test / build artifacts
+.pytest_cache/
+*.tsbuildinfo
+frontend/coverage/

@@ -2,10 +2,11 @@
 Rate limiting middleware for API endpoints
 """
 import time
+import uuid
 from typing import Dict, Optional
 from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
+from starlette.responses import Response, JSONResponse
 import redis.asyncio as redis
 from ..core.config import settings
 
@@ -21,37 +22,52 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         }
         self.default_limit = {"requests": 100, "window": 60}  # Default: 100 requests per minute
 
+    async def _resolve_redis(self):
+        """Middleware must be registered before startup, so Redis is resolved on first use."""
+        if self.redis_client is None:
+            try:
+                from ..core.database import get_redis
+                self.redis_client = await get_redis()
+            except Exception:
+                return None
+        return self.redis_client
+
     async def dispatch(self, request: Request, call_next):
         # Skip rate limiting for health checks and WebSocket connections
         if request.url.path in ["/health", "/ws"] or request.url.path.startswith("/docs"):
             return await call_next(request)
 
+        await self._resolve_redis()
+
         client_ip = self._get_client_ip(request)
         endpoint = request.url.path
-        
+
         # Get rate limit for this endpoint
         limit_config = self.rate_limits.get(endpoint, self.default_limit)
-        
+
         # Check rate limit
         if await self._is_rate_limited(client_ip, endpoint, limit_config):
-            raise HTTPException(
+            # HTTPException raised inside middleware is not handled by FastAPI (it would surface
+            # as a 500), so build the 429 response directly.
+            return JSONResponse(
                 status_code=429,
-                detail={
+                headers={"Retry-After": str(limit_config["window"])},
+                content={"detail": {
                     "error": "Rate limit exceeded",
                     "limit": limit_config["requests"],
                     "window": limit_config["window"],
                     "retry_after": limit_config["window"]
-                }
+                }}
             )
-        
+
         response = await call_next(request)
-        
+
         # Add rate limit headers
         remaining = await self._get_remaining_requests(client_ip, endpoint, limit_config)
         response.headers["X-RateLimit-Limit"] = str(limit_config["requests"])
         response.headers["X-RateLimit-Remaining"] = str(remaining)
         response.headers["X-RateLimit-Reset"] = str(int(time.time()) + limit_config["window"])
-        
+
         return response
 
     def _get_client_ip(self, request: Request) -> str:
@@ -65,26 +81,24 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         """Check if client has exceeded rate limit"""
         if not self.redis_client:
             return False  # Skip rate limiting if Redis is not available
-        
+
         key = f"rate_limit:{client_ip}:{endpoint}"
-        current_time = int(time.time())
+        current_time = time.time()
         window_start = current_time - limit_config["window"]
-        
+        # Members must be unique per request: keying on the timestamp alone collapses every
+        # request within the same instant into one entry and the limit is never reached.
+        member = f"{current_time}:{uuid.uuid4().hex}"
+
         try:
-            # Remove old entries
-            await self.redis_client.zremrangebyscore(key, 0, window_start)
-            
-            # Count current requests
-            current_requests = await self.redis_client.zcard(key)
-            
-            if current_requests >= limit_config["requests"]:
-                return True
-            
-            # Add current request
-            await self.redis_client.zadd(key, {str(current_time): current_time})
-            await self.redis_client.expire(key, limit_config["window"])
-            
-            return False
+            # Sliding-window log, executed atomically so concurrent requests can't all slip under the limit
+            pipe = self.redis_client.pipeline(transaction=True)
+            pipe.zremrangebyscore(key, 0, window_start)
+            pipe.zadd(key, {member: current_time})
+            pipe.zcard(key)
+            pipe.expire(key, limit_config["window"])
+            _, _, current_requests, _ = await pipe.execute()
+
+            return current_requests > limit_config["requests"]
         except Exception:
             # If Redis fails, allow the request
             return False
@@ -93,9 +107,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         """Get remaining requests for client"""
         if not self.redis_client:
             return limit_config["requests"]
-        
+
         key = f"rate_limit:{client_ip}:{endpoint}"
-        
+
         try:
             current_requests = await self.redis_client.zcard(key)
             return max(0, limit_config["requests"] - current_requests)

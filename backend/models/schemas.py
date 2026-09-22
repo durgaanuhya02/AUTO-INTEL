@@ -28,6 +28,7 @@ class AgentType(str, Enum):
     SIMULATION = "simulation"
     DECISION = "decision"
     GOVERNANCE = "governance"
+    HUMAN = "human"  # approvals submitted through the API
 
 # Metric Models
 class MetricCreate(BaseModel):
@@ -42,7 +43,7 @@ class MetricResponse(BaseModel):
     value: float
     timestamp: datetime
     metadata: Optional[Dict[str, Any]] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -67,7 +68,7 @@ class AlertResponse(BaseModel):
     agent_type: AgentType
     created_at: datetime
     resolved_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -104,7 +105,7 @@ class DecisionResponse(BaseModel):
     created_at: datetime
     approved_at: Optional[datetime] = None
     executed_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 

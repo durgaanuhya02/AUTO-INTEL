@@ -6,28 +6,31 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "next": "14.0.3",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "tailwindcss": "^3.3.6",
+    "@headlessui/react": "^1.7.17",
     "autoprefixer": "^10.4.16",
-    "postcss": "^8.4.32",
-    "recharts": "^2.8.0",
-    "lucide-react": "^0.294.0",
     "clsx": "^2.0.0",
     "date-fns": "^2.30.0",
-    "@headlessui/react": "^1.7.17",
-    "framer-motion": "^10.16.16"
+    "framer-motion": "^10.16.16",
+    "lucide-react": "^0.294.0",
+    "next": "14.0.3",
+    "postcss": "^8.4.32",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "recharts": "^2.8.0",
+    "tailwindcss": "^3.3.6"
   },
   "devDependencies": {
-    "typescript": "^5.3.2",
     "@types/node": "^20.9.4",
     "@types/react": "^18.2.38",
     "@types/react-dom": "^18.2.17",
     "eslint": "^8.54.0",
-    "eslint-config-next": "14.0.3"
+    "eslint-config-next": "14.0.3",
+    "typescript": "^5.3.2",
+    "vitest": "^1.6.1"
   }
 }

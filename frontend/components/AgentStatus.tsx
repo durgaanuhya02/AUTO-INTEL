@@ -1,26 +1,21 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { AGENT_API_URL } from '../lib/config';
+import { DashboardAgent, toAgents } from '../lib/adapters';
+import { useRealtime } from '../hooks/useWebSocket';
+import LiveStatusBadge from './LiveStatusBadge';
 import { 
   Brain, Eye, TrendingUp, BarChart3, Shield, Cpu, 
   Activity, Clock, CheckCircle, AlertCircle, Zap, Target
 } from 'lucide-react';
 
-interface Agent {
-  id: string;
-  name: string;
-  type: string;
-  status: 'active' | 'idle' | 'processing' | 'error';
-  lastActivity: string;
-  currentTask: string;
-  performance: number;
-  uptime: string;
-  tasksCompleted: number;
-}
+type Agent = DashboardAgent;
 
 export default function AgentStatus() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAgentStatus();
@@ -28,88 +23,28 @@ export default function AgentStatus() {
     return () => clearInterval(interval);
   }, []);
 
+  const lastRefresh = useRef(0);
+  const { status } = useRealtime({
+    // Agent broadcasts are frequent; refresh the authoritative status at most every 2s.
+    agent_update: () => {
+      const now = Date.now();
+      if (now - lastRefresh.current > 2000) {
+        lastRefresh.current = now;
+        fetchAgentStatus();
+      }
+    },
+  });
+
   const fetchAgentStatus = async () => {
     try {
-      const response = await fetch('http://localhost:8001/api/v1/agents/status');
-      if (response.ok) {
-        const data = await response.json();
-        setAgents(data.agents || []);
-      } else {
-        // Mock agent data for demo
-        setAgents([
-          {
-            id: 'alert-monitor',
-            name: 'Alert Monitor Agent',
-            type: 'Observer',
-            status: 'active',
-            lastActivity: new Date(Date.now() - 30000).toISOString(),
-            currentTask: 'Monitoring revenue metrics for anomalies',
-            performance: 98.5,
-            uptime: '99.9%',
-            tasksCompleted: 1247
-          },
-          {
-            id: 'trend-predictor',
-            name: 'Trend Predictor Agent',
-            type: 'Analyst',
-            status: 'processing',
-            lastActivity: new Date(Date.now() - 120000).toISOString(),
-            currentTask: 'Analyzing seasonal patterns in customer behavior',
-            performance: 94.2,
-            uptime: '99.7%',
-            tasksCompleted: 892
-          },
-          {
-            id: 'data-analyst',
-            name: 'Data Analyst Agent',
-            type: 'Processor',
-            status: 'active',
-            lastActivity: new Date(Date.now() - 45000).toISOString(),
-            currentTask: 'Performing root-cause analysis on satisfaction decline',
-            performance: 96.8,
-            uptime: '99.8%',
-            tasksCompleted: 2156
-          },
-          {
-            id: 'decision-engine',
-            name: 'Decision Engine Agent',
-            type: 'Governor',
-            status: 'idle',
-            lastActivity: new Date(Date.now() - 300000).toISOString(),
-            currentTask: 'Awaiting critical decision points',
-            performance: 99.1,
-            uptime: '100%',
-            tasksCompleted: 543
-          },
-          {
-            id: 'simulation-agent',
-            name: 'Simulation Agent',
-            type: 'Predictor',
-            status: 'processing',
-            lastActivity: new Date(Date.now() - 60000).toISOString(),
-            currentTask: 'Running ML-driven demand forecasting scenarios',
-            performance: 91.7,
-            uptime: '99.5%',
-            tasksCompleted: 678
-          }
-        ]);
-      }
-    } catch (error) {
-      console.error('Error fetching agent status:', error);
-      // Mock data on error
-      setAgents([
-        {
-          id: 'alert-monitor',
-          name: 'Alert Monitor Agent',
-          type: 'Observer',
-          status: 'active',
-          lastActivity: new Date().toISOString(),
-          currentTask: 'Continuous monitoring active',
-          performance: 98.5,
-          uptime: '99.9%',
-          tasksCompleted: 1247
-        }
-      ]);
+      const response = await fetch(`${AGENT_API_URL}/agents/status`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setAgents(toAgents(await response.json()));
+      setError(null);
+    } catch (err) {
+      // Never substitute made-up agent health: keep the last real data and surface the failure.
+      console.error('Error fetching agent status:', err);
+      setError(err instanceof Error ? err.message : 'unknown error');
     } finally {
       setLoading(false);
     }
@@ -186,6 +121,8 @@ export default function AgentStatus() {
 
   return (
     <div className="space-y-6">
+      <LiveStatusBadge status={status} error={error} />
+
       {/* Agent Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-green-500/10 backdrop-blur-sm rounded-lg border border-green-500/20 p-4">
@@ -224,7 +161,7 @@ export default function AgentStatus() {
             <span className="text-purple-400 font-medium">Total Tasks</span>
           </div>
           <p className="text-2xl font-bold text-white">
-            {agents.reduce((sum, agent) => sum + agent.tasksCompleted, 0)}
+            {agents.reduce((sum, agent) => sum + (agent.tasksCompleted ?? 0), 0)}
           </p>
         </div>
       </div>
@@ -270,12 +207,12 @@ export default function AgentStatus() {
               <div className="bg-white/5 rounded-lg p-3">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-sm text-gray-300">Performance</span>
-                  <span className="text-sm font-medium text-white">{agent.performance}%</span>
+                  <span className="text-sm font-medium text-white">{agent.performance === null ? '—' : `${agent.performance}%`}</span>
                 </div>
                 <div className="w-full bg-gray-700 rounded-full h-2">
                   <div 
                     className="bg-green-500 h-2 rounded-full transition-all duration-500"
-                    style={{ width: `${agent.performance}%` }}
+                    style={{ width: `${agent.performance ?? 0}%` }}
                   ></div>
                 </div>
               </div>
@@ -283,14 +220,14 @@ export default function AgentStatus() {
               <div className="bg-white/5 rounded-lg p-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-300">Uptime</span>
-                  <span className="text-sm font-medium text-green-400">{agent.uptime}</span>
+                  <span className="text-sm font-medium text-green-400">{agent.uptime ?? '—'}</span>
                 </div>
               </div>
               
               <div className="bg-white/5 rounded-lg p-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-300">Tasks Completed</span>
-                  <span className="text-sm font-medium text-blue-400">{agent.tasksCompleted.toLocaleString()}</span>
+                  <span className="text-sm font-medium text-blue-400">{agent.tasksCompleted === null ? '—' : agent.tasksCompleted.toLocaleString()}</span>
                 </div>
               </div>
             </div>

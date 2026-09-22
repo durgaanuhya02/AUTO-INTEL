@@ -1,114 +1,36 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { ConnectionStatus, getRealtime } from '../lib/realtime';
 
-interface WebSocketMessage {
-  type: string;
-  timestamp: string;
-  data?: any;
-}
+type Handlers = Record<string, (data: any) => void>;
 
-interface UseWebSocketOptions {
-  url: string;
-  onMessage?: (message: WebSocketMessage) => void;
-  onConnect?: () => void;
-  onDisconnect?: () => void;
-  onError?: (error: Event) => void;
-  reconnectInterval?: number;
-  maxReconnectAttempts?: number;
-}
+/**
+ * Subscribe a component to live agent frames (`new_alert`, `new_decision`, `agent_update`, ...).
+ *
+ * All components share one WebSocket. Handlers may change identity every render; the latest
+ * ones are always used without resubscribing (so re-renders never cause reconnects).
+ */
+export function useRealtime(handlers: Handlers): { status: ConnectionStatus; isConnected: boolean } {
+  const [status, setStatus] = useState<ConnectionStatus>('closed');
+  const latest = useRef(handlers);
+  latest.current = handlers;
 
-export const useWebSocket = ({
-  url,
-  onMessage,
-  onConnect,
-  onDisconnect,
-  onError,
-  reconnectInterval = 3000,
-  maxReconnectAttempts = 5
-}: UseWebSocketOptions) => {
-  const [isConnected, setIsConnected] = useState(false);
-  const [reconnectAttempts, setReconnectAttempts] = useState(0);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const connect = useCallback(() => {
-    try {
-      const ws = new WebSocket(url);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        console.log('🔌 WebSocket connected');
-        setIsConnected(true);
-        setReconnectAttempts(0);
-        onConnect?.();
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const message: WebSocketMessage = JSON.parse(event.data);
-          onMessage?.(message);
-        } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
-        }
-      };
-
-      ws.onclose = () => {
-        console.log('🔌 WebSocket disconnected');
-        setIsConnected(false);
-        onDisconnect?.();
-
-        // Attempt to reconnect
-        if (reconnectAttempts < maxReconnectAttempts) {
-          reconnectTimeoutRef.current = setTimeout(() => {
-            setReconnectAttempts(prev => prev + 1);
-            connect();
-          }, reconnectInterval);
-        }
-      };
-
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        onError?.(error);
-      };
-
-    } catch (error) {
-      console.error('Failed to create WebSocket connection:', error);
-    }
-  }, [url, onMessage, onConnect, onDisconnect, onError, reconnectAttempts, maxReconnectAttempts, reconnectInterval]);
-
-  const disconnect = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-    }
-    
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-    
-    setIsConnected(false);
-  }, []);
-
-  const sendMessage = useCallback((message: any) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(message));
-    } else {
-      console.warn('WebSocket is not connected');
-    }
-  }, []);
+  // The set of subscribed frame types is fixed for the lifetime of the component.
+  const typesRef = useRef(Object.keys(handlers));
 
   useEffect(() => {
-    connect();
+    const client = getRealtime();
+    const unsubscribers = typesRef.current.map((type) =>
+      client.on(type, (data) => latest.current[type]?.(data))
+    );
+    unsubscribers.push(client.onStatus(setStatus));
+    setStatus(client.status);
+    client.retain();
 
     return () => {
-      disconnect();
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+      client.release();
     };
-  }, [connect, disconnect]);
+  }, []);
 
-  return {
-    isConnected,
-    sendMessage,
-    disconnect,
-    reconnect: connect,
-    reconnectAttempts
-  };
-};
+  return { status, isConnected: status === 'open' };
+}

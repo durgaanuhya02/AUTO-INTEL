@@ -1,5 +1,5 @@
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import asyncio
 import json
 
@@ -13,57 +13,55 @@ class GovernanceAgent(BaseAgent):
         self.pending_decisions = []
         self.policy_rules = {}
         self.audit_log = []
-    
+
     async def initialize(self):
         await self.update_status("initializing", "Loading governance policies")
         await self._load_policy_rules()
         await self.update_status("active", "Monitoring decisions")
         self.logger.info("Governance agent initialized successfully")
-    
+
     async def process(self):
         await self.update_status("processing", "Reviewing decisions")
-        
+
         try:
-            if self.pending_decisions:
-                for decision_package in self.pending_decisions:
-                    result = await self._review_decision(decision_package)
-                    if result:
-                        await self._handle_decision_result(result)
-                
-                self.pending_decisions.clear()
-            
+            packages, self.pending_decisions = self.pending_decisions, []
+            for decision_package in packages:
+                result = await self._review_decision(decision_package)
+                if result:
+                    await self._handle_decision_result(result)
+
             # Periodic audit and compliance checks
             await self._perform_audit_checks()
-            
+
             await self.update_status("active", "Governance review complete")
-            
+
         except Exception as e:
             self.logger.error(f"Error in governance processing: {e}")
             await self.update_status("error", f"Governance error: {str(e)}")
-    
+
     async def handle_message(self, message: AgentMessage):
         await super().handle_message(message)
-        
+
         if message.message_type == "decision_ready":
             self.pending_decisions.append(message.content)
             await self.update_status("processing", "Reviewing new decision")
-        
+
         elif message.message_type == "human_approval":
             await self._handle_human_approval(message.content)
-        
+
         elif message.message_type == "execution_complete":
             await self._log_execution(message.content)
-    
+
     async def _review_decision(self, decision_package: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Review decision against governance policies"""
-        
+
         try:
             decision_data = decision_package["decision"]
             analysis = decision_package["analysis"]
-            
+
             # Apply policy rules
             policy_result = await self._apply_policy_rules(decision_data, analysis)
-            
+
             # Determine final status
             if decision_data["requires_approval"] or policy_result["requires_approval"]:
                 status = DecisionStatus.PENDING
@@ -74,7 +72,7 @@ class GovernanceAgent(BaseAgent):
             else:
                 status = DecisionStatus.REJECTED
                 action = "reject"
-            
+
             # Create audit entry
             audit_entry = {
                 "decision_id": decision_data.get("id", "pending"),
@@ -88,13 +86,15 @@ class GovernanceAgent(BaseAgent):
                 "timestamp": datetime.utcnow().isoformat(),
                 "governance_agent_id": str(id(self))
             }
-            
+
             self.audit_log.append(audit_entry)
-            
+
             # Store in Redis for dashboard access
-            await self.redis_client.lpush("governance_log", json.dumps(audit_entry, default=str))
+            entry_json = json.dumps(audit_entry, default=str)
+            await self.redis_client.lpush("governance_log", entry_json)
             await self.redis_client.ltrim("governance_log", 0, 99)  # Keep last 100 entries
-            
+            await self.redis_client.publish("decisions", entry_json)
+
             result = {
                 "decision_package": decision_package,
                 "audit_entry": audit_entry,
@@ -103,25 +103,25 @@ class GovernanceAgent(BaseAgent):
                 "policy_violations": policy_result.get("violations", []),
                 "approval_required": status == DecisionStatus.PENDING
             }
-            
+
             self.logger.info(f"Decision reviewed: {action} - {decision_data['title']}")
-            
+
             return result
-            
+
         except Exception as e:
             self.logger.error(f"Error reviewing decision: {e}")
             return None
-    
+
     async def _apply_policy_rules(self, decision_data: Dict[str, Any], analysis: Dict[str, Any]) -> Dict[str, Any]:
         """Apply governance policy rules to the decision"""
-        
+
         violations = []
         requires_approval = False
         approved = True
-        
+
         # Financial impact rules
         financial_impact = abs(decision_data["financial_impact"])
-        
+
         if financial_impact > self.policy_rules["max_auto_financial_impact"]:
             violations.append({
                 "rule": "max_auto_financial_impact",
@@ -130,7 +130,7 @@ class GovernanceAgent(BaseAgent):
                 "severity": "high"
             })
             requires_approval = True
-        
+
         # Confidence threshold rules
         confidence = decision_data["confidence_score"]
         if confidence < self.policy_rules["min_confidence_auto_approve"]:
@@ -141,11 +141,11 @@ class GovernanceAgent(BaseAgent):
                 "severity": "medium"
             })
             requires_approval = True
-        
+
         # Risk assessment rules
         scenarios = decision_data.get("scenarios", [])
         recommended_scenario = decision_data["recommended_scenario"]
-        
+
         for scenario in scenarios:
             if scenario["name"] == recommended_scenario:
                 risk_score = scenario["risk_score"]
@@ -158,7 +158,7 @@ class GovernanceAgent(BaseAgent):
                     })
                     requires_approval = True
                 break
-        
+
         # Business hours rule
         current_hour = datetime.utcnow().hour
         if not (self.policy_rules["business_hours_start"] <= current_hour <= self.policy_rules["business_hours_end"]):
@@ -168,11 +168,11 @@ class GovernanceAgent(BaseAgent):
                 "severity": "low"
             })
             requires_approval = True
-        
+
         # Metric-specific rules
         anomaly = analysis["anomaly"]
         metric_type = anomaly["metric_type"]
-        
+
         if metric_type in self.policy_rules["critical_metrics"]:
             violations.append({
                 "rule": "critical_metrics",
@@ -180,22 +180,23 @@ class GovernanceAgent(BaseAgent):
                 "severity": "medium"
             })
             requires_approval = True
-        
+
         # Scenario-specific rules
         restricted_scenarios = self.policy_rules.get("restricted_scenarios", [])
-        if any(restricted in recommended_scenario.lower() for restricted in restricted_scenarios):
+        normalized_scenario = recommended_scenario.lower().replace(" ", "_")
+        if any(restricted in normalized_scenario for restricted in restricted_scenarios):
             violations.append({
                 "rule": "restricted_scenarios",
                 "message": f"Scenario type '{recommended_scenario}' requires approval",
                 "severity": "high"
             })
             requires_approval = True
-        
+
         # If there are violations, decision needs review
         if violations and not requires_approval:
             # Some violations might not require approval but should be logged
             pass
-        
+
         return {
             "approved": approved and not requires_approval,
             "requires_approval": requires_approval,
@@ -203,13 +204,13 @@ class GovernanceAgent(BaseAgent):
             "policy_version": self.policy_rules.get("version", "1.0"),
             "review_timestamp": datetime.utcnow().isoformat()
         }
-    
+
     async def _handle_decision_result(self, result: Dict[str, Any]):
         """Handle the result of decision review"""
-        
+
         action = result["action"]
         decision_package = result["decision_package"]
-        
+
         if action == "auto_approve":
             # Auto-approve and execute
             await self.send_message(
@@ -221,14 +222,14 @@ class GovernanceAgent(BaseAgent):
                     "timestamp": datetime.utcnow().isoformat()
                 }
             )
-            
+
             # Trigger execution (in a real system, this would integrate with execution systems)
             await self._trigger_execution(decision_package["decision"])
-        
+
         elif action == "request_human_approval":
             # Send to human approval queue
             await self._request_human_approval(decision_package, result)
-        
+
         elif action == "reject":
             # Reject decision
             await self.send_message(
@@ -240,10 +241,10 @@ class GovernanceAgent(BaseAgent):
                     "timestamp": datetime.utcnow().isoformat()
                 }
             )
-    
+
     async def _request_human_approval(self, decision_package: Dict[str, Any], review_result: Dict[str, Any]):
         """Request human approval for the decision"""
-        
+
         approval_request = {
             "decision": decision_package["decision"],
             "analysis": decision_package["analysis"],
@@ -253,27 +254,33 @@ class GovernanceAgent(BaseAgent):
             "requested_at": datetime.utcnow().isoformat(),
             "expires_at": (datetime.utcnow() + timedelta(hours=24)).isoformat()
         }
-        
+
         # Store in approval queue
         await self.redis_client.lpush("approval_queue", json.dumps(approval_request, default=str))
-        
+
         # Notify dashboard
         await self.send_message(
             None,  # Broadcast
             "approval_requested",
             approval_request
         )
-        
+
         self.logger.info(f"Human approval requested for: {decision_package['decision']['title']}")
-    
+
     async def _handle_human_approval(self, approval_data: Dict[str, Any]):
         """Handle human approval response"""
-        
+
         decision_id = approval_data.get("decision_id")
         approved = approval_data.get("approved", False)
         comments = approval_data.get("comments", "")
         approver = approval_data.get("approver", "unknown")
-        
+
+        # Only decisions actually awaiting approval can be approved, and only once.
+        pending = await self._pop_pending_approval(decision_id)
+        if pending is None:
+            self.logger.warning(f"Ignoring approval for unknown or already-resolved decision: {decision_id}")
+            return
+
         # Log the approval
         approval_log = {
             "decision_id": decision_id,
@@ -282,11 +289,30 @@ class GovernanceAgent(BaseAgent):
             "comments": comments,
             "timestamp": datetime.utcnow().isoformat()
         }
-        
+
         self.audit_log.append(approval_log)
-        
+
+        # Record the outcome in the shared decision log so dashboards stop showing it as pending.
+        decision = pending["decision"]
+        review_entry = {
+            "decision_id": decision_id,
+            "decision_title": decision["title"],
+            "recommended_scenario": decision["recommended_scenario"],
+            "financial_impact": decision["financial_impact"],
+            "confidence_score": decision["confidence_score"],
+            "policy_result": {"violations": pending.get("policy_violations", [])},
+            "final_status": DecisionStatus.APPROVED if approved else DecisionStatus.REJECTED,
+            "action": "human_approved" if approved else "human_rejected",
+            "approver": approver,
+            "comments": comments,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        review_json = json.dumps(review_entry, default=str)
+        await self.redis_client.lpush("governance_log", review_json)
+        await self.redis_client.ltrim("governance_log", 0, 99)
+        await self.redis_client.publish("decisions", review_json)
+
         if approved:
-            # Execute the decision
             await self.send_message(
                 None,  # Broadcast
                 "decision_approved",
@@ -297,6 +323,7 @@ class GovernanceAgent(BaseAgent):
                     "timestamp": datetime.utcnow().isoformat()
                 }
             )
+            await self._trigger_execution(pending["decision"])
         else:
             await self.send_message(
                 None,  # Broadcast
@@ -308,43 +335,57 @@ class GovernanceAgent(BaseAgent):
                     "timestamp": datetime.utcnow().isoformat()
                 }
             )
-        
+
         self.logger.info(f"Human approval processed: {'approved' if approved else 'rejected'} by {approver}")
-    
+
+    async def _pop_pending_approval(self, decision_id: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Remove and return the queued approval request for `decision_id`, if any."""
+        if not decision_id:
+            return None
+        for raw in await self.redis_client.lrange("approval_queue", 0, -1):
+            try:
+                entry = json.loads(raw)
+            except ValueError:
+                continue
+            if entry.get("decision", {}).get("id") == decision_id:
+                await self.redis_client.lrem("approval_queue", 1, raw)
+                return entry
+        return None
+
     def _calculate_urgency(self, decision_package: Dict[str, Any]) -> str:
         """Calculate urgency level for human approval"""
-        
+
         decision = decision_package["decision"]
         analysis = decision_package["analysis"]
-        
+
         # High urgency factors
         high_urgency_factors = 0
-        
+
         # High financial impact
         if abs(decision["financial_impact"]) > 50000:
             high_urgency_factors += 1
-        
+
         # Critical metric anomaly
         if analysis["anomaly"].get("severity") == "critical":
             high_urgency_factors += 1
-        
+
         # High confidence but high risk
         if decision["confidence_score"] > 0.8 and any(s["risk_score"] > 0.7 for s in decision["scenarios"]):
             high_urgency_factors += 1
-        
+
         if high_urgency_factors >= 2:
             return "high"
         elif high_urgency_factors == 1:
             return "medium"
         else:
             return "low"
-    
+
     async def _trigger_execution(self, decision: Dict[str, Any]):
         """Trigger execution of approved decision"""
-        
+
         # In a real system, this would integrate with execution systems
         # For demo, we'll simulate execution
-        
+
         execution_data = {
             "decision_id": decision.get("id", "demo"),
             "scenario": decision["recommended_scenario"],
@@ -352,42 +393,42 @@ class GovernanceAgent(BaseAgent):
             "status": "executing",
             "started_at": datetime.utcnow().isoformat()
         }
-        
+
         # Store execution status
         await self.redis_client.set(
             f"execution:{decision.get('id', 'demo')}",
             json.dumps(execution_data, default=str),
             ex=3600
         )
-        
+
         self.logger.info(f"Execution triggered for: {decision['title']}")
-    
+
     async def _perform_audit_checks(self):
         """Perform periodic audit and compliance checks"""
-        
+
         try:
             # Check for overdue approvals
             approval_queue_length = await self.redis_client.llen("approval_queue")
-            
+
             if approval_queue_length > 10:
                 self.logger.warning(f"High number of pending approvals: {approval_queue_length}")
-            
+
             # Check recent decision patterns
             if len(self.audit_log) > 20:
                 recent_decisions = self.audit_log[-20:]
                 auto_approval_rate = sum(1 for d in recent_decisions if d.get("action") == "auto_approve") / len(recent_decisions)
-                
+
                 if auto_approval_rate < 0.3:
                     self.logger.info(f"Low auto-approval rate: {auto_approval_rate:.2%}")
                 elif auto_approval_rate > 0.8:
                     self.logger.info(f"High auto-approval rate: {auto_approval_rate:.2%}")
-            
+
         except Exception as e:
             self.logger.error(f"Error in audit checks: {e}")
-    
+
     async def _log_execution(self, execution_data: Dict[str, Any]):
         """Log execution completion"""
-        
+
         log_entry = {
             "type": "execution_complete",
             "decision_id": execution_data.get("decision_id"),
@@ -395,13 +436,13 @@ class GovernanceAgent(BaseAgent):
             "result": execution_data.get("result"),
             "timestamp": datetime.utcnow().isoformat()
         }
-        
+
         self.audit_log.append(log_entry)
         self.logger.info(f"Execution logged: {execution_data.get('decision_id')}")
-    
+
     async def _load_policy_rules(self):
         """Load governance policy rules"""
-        
+
         self.policy_rules = {
             "version": "1.0",
             "max_auto_financial_impact": 10000,  # USD
@@ -414,5 +455,5 @@ class GovernanceAgent(BaseAgent):
             "max_pending_approvals": 20,
             "approval_timeout_hours": 24
         }
-        
+
         self.logger.info("Governance policy rules loaded")

@@ -286,7 +286,7 @@ class EnterpriseIntegrations:
                         metric_type=metric_data["metric_type"],
                         value=metric_data["value"],
                         timestamp=metric_data["timestamp"],
-                        metadata=metric_data.get("metadata", {})
+                        meta_data=metric_data.get("metadata", {})
                     )
                     session.add(metric)
                 

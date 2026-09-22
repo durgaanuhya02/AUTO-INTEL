@@ -1,26 +1,21 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { AGENT_API_URL } from '../lib/config';
+import { DashboardAlert, toAlert, upsertById } from '../lib/adapters';
+import { useRealtime } from '../hooks/useWebSocket';
+import LiveStatusBadge from './LiveStatusBadge';
 import { 
   AlertTriangle, TrendingDown, TrendingUp, Clock, Brain, 
   Shield, Zap, CheckCircle, XCircle, AlertCircle, Eye
 } from 'lucide-react';
 
-interface Alert {
-  id: string;
-  type: 'critical' | 'high' | 'medium' | 'low';
-  title: string;
-  description: string;
-  timestamp: string;
-  agent: string;
-  confidence: number;
-  impact: string;
-  status: 'active' | 'acknowledged' | 'resolved';
-}
+type Alert = DashboardAlert;
 
 export default function AlertPanel() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAlerts();
@@ -28,66 +23,24 @@ export default function AlertPanel() {
     return () => clearInterval(interval);
   }, []);
 
+  const { status } = useRealtime({
+    new_alert: (data) => {
+      const alert = toAlert(data);
+      if (alert) setAlerts((prev) => upsertById(prev, alert));
+    },
+  });
+
   const fetchAlerts = async () => {
     try {
-      const response = await fetch('http://localhost:8001/api/v1/alerts');
-      if (response.ok) {
-        const data = await response.json();
-        setAlerts(data.alerts || []);
-      } else {
-        // Mock alerts for demo when API is not available
-        setAlerts([
-          {
-            id: '1',
-            type: 'critical',
-            title: 'Revenue Anomaly Detected',
-            description: 'Sudden 15% drop in revenue detected in the last 2 hours. Pattern analysis suggests external market factors.',
-            timestamp: new Date(Date.now() - 1800000).toISOString(),
-            agent: 'Alert Monitor Agent',
-            confidence: 94.5,
-            impact: 'High - Potential $50K daily impact',
-            status: 'active'
-          },
-          {
-            id: '2',
-            type: 'high',
-            title: 'Customer Satisfaction Decline',
-            description: 'Customer satisfaction score dropped below 4.0 threshold. Correlation with delivery delays identified.',
-            timestamp: new Date(Date.now() - 3600000).toISOString(),
-            agent: 'Trend Predictor Agent',
-            confidence: 87.2,
-            impact: 'Medium - Customer retention risk',
-            status: 'acknowledged'
-          },
-          {
-            id: '3',
-            type: 'medium',
-            title: 'Order Volume Spike',
-            description: 'Unusual 25% increase in order volume detected. Monitoring for capacity constraints.',
-            timestamp: new Date(Date.now() - 7200000).toISOString(),
-            agent: 'Data Analyst Agent',
-            confidence: 78.9,
-            impact: 'Low - Positive revenue indicator',
-            status: 'resolved'
-          }
-        ]);
-      }
-    } catch (error) {
-      console.error('Error fetching alerts:', error);
-      // Mock alerts for demo
-      setAlerts([
-        {
-          id: '1',
-          type: 'critical',
-          title: 'Revenue Anomaly Detected',
-          description: 'AI detected unusual revenue pattern requiring immediate attention.',
-          timestamp: new Date(Date.now() - 1800000).toISOString(),
-          agent: 'Alert Monitor Agent',
-          confidence: 94.5,
-          impact: 'High - Potential business impact',
-          status: 'active'
-        }
-      ]);
+      const response = await fetch(`${AGENT_API_URL}/alerts`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      setAlerts((data.alerts || []).map(toAlert).filter((a: DashboardAlert | null): a is DashboardAlert => a !== null));
+      setError(null);
+    } catch (err) {
+      // Never substitute made-up alerts: keep the last real data and surface the failure.
+      console.error('Error fetching alerts:', err);
+      setError(err instanceof Error ? err.message : 'unknown error');
     } finally {
       setLoading(false);
     }
@@ -157,6 +110,8 @@ export default function AlertPanel() {
 
   return (
     <div className="space-y-6">
+      <LiveStatusBadge status={status} error={error} />
+
       {/* Alert Summary */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-red-500/10 backdrop-blur-sm rounded-lg border border-red-500/20 p-4">
@@ -238,7 +193,7 @@ export default function AlertPanel() {
                   </div>
                   <div className="text-right">
                     <p className="text-sm text-gray-300">Confidence</p>
-                    <p className="text-lg font-bold text-white">{alert.confidence}%</p>
+                    <p className="text-lg font-bold text-white">{alert.confidence === null ? '—' : `${alert.confidence}%`}</p>
                   </div>
                 </div>
               </div>

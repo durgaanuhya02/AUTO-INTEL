@@ -1,0 +1,142 @@
+{
+  "_comment": "AUTO-INTEL ECS Task Definitions — deploy via: aws ecs register-task-definition --cli-input-json file://ecs_task_definitions.json",
+
+  "backend": {
+    "family": "auto-intel-backend",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": ["FARGATE"],
+    "cpu": "2048",
+    "memory": "4096",
+    "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/auto-intel-prod-ecs-task-execution-role",
+    "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/auto-intel-prod-ecs-task-role",
+    "containerDefinitions": [
+      {
+        "name": "backend",
+        "image": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/auto-intel-backend:latest",
+        "portMappings": [
+          { "containerPort": 8000, "protocol": "tcp" }
+        ],
+        "environment": [
+          { "name": "ENVIRONMENT", "value": "production" },
+          { "name": "LOG_LEVEL", "value": "INFO" },
+          { "name": "WORKERS", "value": "4" },
+          { "name": "S3_MODELS_BUCKET", "value": "auto-intel-prod-models" },
+          { "name": "S3_DATA_BUCKET", "value": "auto-intel-prod-data" },
+          { "name": "MLFLOW_TRACKING_URI", "value": "http://mlflow-service.auto-intel.internal:5000" }
+        ],
+        "secrets": [
+          {
+            "name": "OPENAI_API_KEY",
+            "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:auto-intel-prod/openai-api-key"
+          },
+          {
+            "name": "DATABASE_URL",
+            "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:auto-intel-prod/db-url"
+          },
+          {
+            "name": "REDIS_URL",
+            "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:auto-intel-prod/redis-url"
+          }
+        ],
+        "logConfiguration": {
+          "logDriver": "awslogs",
+          "options": {
+            "awslogs-group": "/ecs/auto-intel-prod/backend",
+            "awslogs-region": "us-east-1",
+            "awslogs-stream-prefix": "ecs"
+          }
+        },
+        "healthCheck": {
+          "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
+          "interval": 30,
+          "timeout": 10,
+          "retries": 3,
+          "startPeriod": 60
+        },
+        "essential": true
+      }
+    ]
+  },
+
+  "frontend": {
+    "family": "auto-intel-frontend",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": ["FARGATE"],
+    "cpu": "512",
+    "memory": "1024",
+    "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/auto-intel-prod-ecs-task-execution-role",
+    "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/auto-intel-prod-ecs-task-role",
+    "containerDefinitions": [
+      {
+        "name": "frontend",
+        "image": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/auto-intel-frontend:latest",
+        "portMappings": [
+          { "containerPort": 3000, "protocol": "tcp" }
+        ],
+        "environment": [
+          { "name": "NODE_ENV", "value": "production" },
+          { "name": "NEXT_PUBLIC_API_URL", "value": "https://api.auto-intel.yourdomain.com/api/v1" },
+          { "name": "NEXT_PUBLIC_WS_URL", "value": "wss://api.auto-intel.yourdomain.com/ws" }
+        ],
+        "logConfiguration": {
+          "logDriver": "awslogs",
+          "options": {
+            "awslogs-group": "/ecs/auto-intel-prod",
+            "awslogs-region": "us-east-1",
+            "awslogs-stream-prefix": "frontend"
+          }
+        },
+        "essential": true
+      }
+    ]
+  },
+
+  "mlflow": {
+    "family": "auto-intel-mlflow",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": ["FARGATE"],
+    "cpu": "1024",
+    "memory": "2048",
+    "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/auto-intel-prod-ecs-task-execution-role",
+    "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/auto-intel-prod-ecs-task-role",
+    "containerDefinitions": [
+      {
+        "name": "mlflow",
+        "image": "python:3.11-slim",
+        "command": [
+          "sh", "-c",
+          "pip install mlflow==2.8.1 psycopg2-binary boto3 && mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri postgresql://mlflow_user:${DB_PASSWORD}@${MLFLOW_DB_HOST}:5432/mlflow --default-artifact-root s3://auto-intel-prod-mlflow-artifacts --serve-artifacts"
+        ],
+        "portMappings": [
+          { "containerPort": 5000, "protocol": "tcp" }
+        ],
+        "secrets": [
+          {
+            "name": "DB_PASSWORD",
+            "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:auto-intel-prod/db-password"
+          }
+        ],
+        "environment": [
+          { "name": "MLFLOW_DB_HOST", "value": "auto-intel-prod-mlflow-postgres.XXXXX.us-east-1.rds.amazonaws.com" },
+          { "name": "AWS_DEFAULT_REGION", "value": "us-east-1" }
+        ],
+        "logConfiguration": {
+          "logDriver": "awslogs",
+          "options": {
+            "awslogs-group": "/ecs/auto-intel-prod/mlflow",
+            "awslogs-region": "us-east-1",
+            "awslogs-stream-prefix": "ecs"
+          }
+        },
+        "healthCheck": {
+          "command": ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"],
+          "interval": 30,
+          "timeout": 10,
+          "retries": 3,
+          "startPeriod": 90
+        },
+        "essential": true
+      }
+    ]
+  }
+}
