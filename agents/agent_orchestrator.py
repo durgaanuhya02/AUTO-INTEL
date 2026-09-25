@@ -6,7 +6,7 @@ import openai
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.schemas import AgentType
-from .observer_agent import ObserverAgent, BASELINE_METRICS
+from .observer_agent import ObserverAgent, baseline_metrics
 from .analyst_agent import AnalystAgent
 from .simulation_agent import SimulationAgent
 from .decision_agent import DecisionAgent
@@ -231,7 +231,7 @@ class AgentOrchestrator:
                 "current_value": current_value,
                 # Compare against the metric's baseline (so a revenue drop is measured against normal
                 # revenue). Unknown metrics fall back to a 25% shortfall.
-                "expected_value": BASELINE_METRICS.get(metric_type, current_value * 1.25),
+                "expected_value": baseline_metrics().get(metric_type, current_value * 1.25),
                 "severity": "medium",
                 "description": f"Manual trigger for {metric_type}"
             }

@@ -8,16 +8,17 @@ import uuid
 from .base_agent import BaseAgent
 from backend.models.schemas import AgentType, AgentMessage, DecisionScenario, DecisionCreate
 
-# Assumed USD value of one unit of improvement in each metric. These are tunable business
-# assumptions, not measured values: replace with figures from finance before relying on them.
-METRIC_UNIT_VALUE_USD = {
+# Assumed value (R$, the currency of the Olist data) of one unit of improvement in each metric.
+# These are tunable business assumptions, not measured values: replace with figures from finance
+# before relying on them.
+METRIC_UNIT_VALUE = {
     "revenue": 1.0,
     "orders": 40.0,               # average contribution margin per order
     "churn_risk": 200000.0,       # value of a full 1.0 reduction in churn probability
     "delivery_delay": 1500.0,     # per day of delay removed
     "customer_satisfaction": 8000.0,  # per rating point
 }
-DEFAULT_UNIT_VALUE_USD = 100.0
+DEFAULT_UNIT_VALUE = 100.0
 
 
 class DecisionAgent(BaseAgent):
@@ -248,7 +249,7 @@ class DecisionAgent(BaseAgent):
         return "".join(reasoning_parts)
 
     async def _calculate_financial_impact(self, scenario: DecisionScenario, anomaly: Dict[str, Any]) -> float:
-        """Net USD impact: value of the metric improvement the scenario delivers, minus its cost."""
+        """Net impact (R$): value of the metric improvement the scenario delivers, minus its cost."""
 
         cost = float(scenario.parameters.get("estimated_cost", scenario.parameters.get("cost", 0.0)))
 
@@ -256,7 +257,7 @@ class DecisionAgent(BaseAgent):
         predicted_value = float(scenario.predicted_outcome.get("expected_value", current_value))
         improvement = abs(predicted_value - current_value)
 
-        unit_value = METRIC_UNIT_VALUE_USD.get(str(anomaly["metric_type"]), DEFAULT_UNIT_VALUE_USD)
+        unit_value = METRIC_UNIT_VALUE.get(str(anomaly["metric_type"]), DEFAULT_UNIT_VALUE)
         return improvement * unit_value - cost
 
     async def _requires_approval(self, scenario: DecisionScenario, financial_impact: float) -> bool:

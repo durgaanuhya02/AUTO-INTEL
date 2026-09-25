@@ -8,6 +8,8 @@ import json
 
 import pytest
 
+from backend.services.olist_metrics import daily_metrics
+
 from backend.models.schemas import AgentType
 from tests.conftest import until, anomaly
 
@@ -228,6 +230,6 @@ async def test_manual_trigger_measures_against_the_metric_baseline(pipeline):
     orch = AgentOrchestrator()
     orch.agents = {"analyst": pipeline["analyst"]}
     result = await orch.trigger_manual_analysis("revenue", 4200.0)
-    assert result["anomaly"]["expected_value"] == 15000.0
+    assert result["anomaly"]["expected_value"] == pytest.approx(daily_metrics()["revenue"].median())
     unknown = await orch.trigger_manual_analysis("mystery", 80.0)
     assert unknown["anomaly"]["expected_value"] == 100.0

@@ -1,0 +1,95 @@
+date,metric,severity,source,current,reference,scenario,score,financial_impact,action,violations,completed
+2017-05-07,revenue,medium,detector,17167.87,8002.905,Inventory Clearance,0.5939310552211776,3324.2342500000013,request_human_approval,"['min_confidence_auto_approve', 'critical_metrics']",True
+2017-06-21,orders,high,threshold,35.0,38.625,Checkout Optimization,0.5825,-1200.0,request_human_approval,['min_confidence_auto_approve'],True
+2017-06-26,orders,medium,detector,72.0,150.0,Checkout Optimization,0.8325,360.0,auto_approve,[],True
+2017-07-06,revenue,medium,detector,22223.72,12417.650000000001,Inventory Clearance,0.6064321396237893,3612.7315000000017,request_human_approval,"['min_confidence_auto_approve', 'critical_metrics']",True
+2017-07-09,delivery_delay,medium,detector,11.983394907407408,10.317276427469135,Express Carrier Upgrade,0.6510591262898394,-1125.4522540509245,request_human_approval,['min_confidence_auto_approve'],True
+2017-07-14,orders,medium,detector,149.0,100.5,Checkout Optimization,0.6336744966442953,-230.0,request_human_approval,['min_confidence_auto_approve'],True
+2017-07-17,customer_satisfaction,medium,detector,3.25,3.6013071895424833,Service Recovery Credits,0.687471342383107,124.18300653594724,request_human_approval,['min_confidence_auto_approve'],True
+2017-07-18,revenue,medium,detector,28238.2,16082.925,Inventory Clearance,0.6078885720407108,4669.8737500000025,request_human_approval,"['min_confidence_auto_approve', 'critical_metrics']",True
+2017-08-23,orders,medium,detector,111.0,146.5,Checkout Optimization,0.730472972972973,-490.0,request_human_approval,['min_confidence_auto_approve'],True
+2017-08-29,revenue,medium,detector,33756.48,20203.335,Inventory Clearance,0.611797826817251,5298.915250000002,request_human_approval,"['min_confidence_auto_approve', 'critical_metrics']",True
+2017-09-02,delivery_delay,high,detector,12.04132208994709,9.967835250998547,Express Carrier Upgrade,0.6455873949828036,-789.3733578674523,request_human_approval,['min_confidence_auto_approve'],True
+2017-09-03,revenue,high,detector,27741.420000000002,13120.83,Inventory Clearance,0.5948508068440621,5779.265500000001,request_human_approval,"['min_confidence_auto_approve', 'critical_metrics']",True
+2017-09-04,customer_satisfaction,high,detector,4.25,3.6747685185185186,Service Recovery Credits,0.6582581699346405,840.7407407407418,request_human_approval,['min_confidence_auto_approve'],True
+2017-09-08,revenue,medium,detector,11573.57,18135.675,Inventory Clearance,0.7425437263523701,2152.9472499999993,request_human_approval,"['min_confidence_auto_approve', 'critical_metrics']",True
+2017-09-10,delivery_delay,high,detector,12.454260106142728,9.967835250998547,Express Carrier Upgrade,0.6410586532156622,-448.69949450605054,request_human_approval,['min_confidence_auto_approve'],True
+2017-09-19,delivery_delay,medium,threshold,27.670926623653795,23.9304023789879,Express Carrier Upgrade,0.5700000000000001,-2500.0,request_human_approval,['min_confidence_auto_approve'],True
+2017-09-23,revenue,medium,detector,10302.51,16605.595,Inventory Clearance,0.7485931229380025,2036.38825,request_human_approval,"['min_confidence_auto_approve', 'critical_metrics']",True
+2017-09-29,revenue,medium,detector,30878.559999999998,16981.695,Inventory Clearance,0.6052433852161501,5453.589249999997,request_human_approval,"['min_confidence_auto_approve', 'critical_metrics']",True
+2017-10-02,customer_satisfaction,high,detector,4.228571428571429,3.7804232804232805,Service Recovery Credits,0.6617822822822823,434.0740740740757,request_human_approval,['min_confidence_auto_approve'],True
+2017-10-09,customer_satisfaction,high,detector,4.25,3.7804232804232805,Service Recovery Credits,0.6612413632119515,502.6455026454996,request_human_approval,['min_confidence_auto_approve'],True
+2017-10-13,customer_satisfaction,high,detector,3.116279069767442,4.189334637964775,Service Recovery Credits,0.7158206472529719,2433.777818231466,request_human_approval,['min_confidence_auto_approve'],True
+2017-10-30,customer_satisfaction,high,detector,3.338235294117647,4.114285714285714,Service Recovery Credits,0.7023967904342354,1483.3613445378155,request_human_approval,['min_confidence_auto_approve'],True
+2017-11-03,customer_satisfaction,high,threshold,2.966666666666667,3.0,Service Recovery Credits,0.5825,-1000.0,request_human_approval,['min_confidence_auto_approve'],True
+2017-11-10,customer_satisfaction,medium,detector,4.111111111111111,3.6789124817436245,Service Recovery Credits,0.6618844724400842,383.0356139759558,request_human_approval,['min_confidence_auto_approve'],True
+2017-11-11,orders,medium,detector,154.0,109.5,Checkout Optimization,0.6391558441558441,-310.0,request_human_approval,['min_confidence_auto_approve'],True
+2017-11-12,customer_satisfaction,high,threshold,2.9516129032258065,3.0,Service Recovery Credits,0.5825,-1000.0,request_human_approval,['min_confidence_auto_approve'],True
+2017-11-13,customer_satisfaction,high,threshold,2.9516129032258065,3.0,Service Recovery Credits,0.5825,-1000.0,request_human_approval,['min_confidence_auto_approve'],True
+2017-11-16,orders,medium,detector,224.0,158.5,Checkout Optimization,0.6386383928571429,110.0,request_human_approval,['min_confidence_auto_approve'],True
+2017-11-17,orders,medium,detector,189.0,134.5,Checkout Optimization,0.6392460317460318,-110.0,request_human_approval,['min_confidence_auto_approve'],True
+2017-11-20,revenue,high,detector,44235.47,23169.21,Inventory Clearance,0.6017089435242804,8679.817000000003,request_human_approval,"['min_confidence_auto_approve', 'critical_metrics']",True
+2017-11-23,orders,high,detector,275.0,164.0,Checkout Optimization,0.6219545454545454,1020.0,request_human_approval,['min_confidence_auto_approve'],True
+2017-11-24,revenue,medium,threshold,152653.74,109041.125,Checkout Optimization,0.5825,-1200.0,request_human_approval,['min_confidence_auto_approve'],True
+2017-11-25,orders,high,detector,499.0,128.0,Checkout Optimization,0.5709769539078157,6220.0,request_human_approval,['min_confidence_auto_approve'],True
+2017-11-26,customer_satisfaction,medium,detector,3.9618320610687023,3.326525054466231,Service Recovery Credits,0.6552571750601333,1032.982421127908,request_human_approval,['min_confidence_auto_approve'],True
+2017-11-27,customer_satisfaction,medium,detector,4.1395348837209305,3.326525054466231,Service Recovery Credits,0.6509318498935155,1601.631453615038,request_human_approval,['min_confidence_auto_approve'],True
+2017-12-14,delivery_delay,medium,detector,13.475349825387672,11.013215927723415,Express Carrier Upgrade,0.6438522043302194,-468.73953442698735,request_human_approval,['min_confidence_auto_approve'],True
+2017-12-16,delivery_delay,medium,detector,14.9554051859319,11.460118083888144,Express Carrier Upgrade,0.6354371951366636,383.6118591860991,request_human_approval,['min_confidence_auto_approve'],True
+2017-12-17,customer_satisfaction,medium,detector,3.142857142857143,3.897486772486772,Service Recovery Credits,0.7033131313131313,1414.8148148148143,request_human_approval,['min_confidence_auto_approve'],True
+2017-12-19,delivery_delay,medium,detector,16.593310906760877,12.12517451260288,Express Carrier Upgrade,0.6295698974617728,1186.2125251803468,request_human_approval,['min_confidence_auto_approve'],True
+2017-12-20,delivery_delay,medium,detector,15.988675471616476,11.608125299957404,Express Carrier Upgrade,0.6287935800181282,1113.953891618734,request_human_approval,['min_confidence_auto_approve'],True
+2017-12-21,delivery_delay,medium,detector,15.903346123666038,11.013215927723415,Express Carrier Upgrade,0.6232640431732909,1534.3574116526638,request_human_approval,['min_confidence_auto_approve'],True
+2017-12-22,delivery_delay,medium,detector,14.873100518036624,11.686268013324494,Express Carrier Upgrade,0.6386457466861176,129.13681638750677,request_human_approval,['min_confidence_auto_approve'],True
+2017-12-23,delivery_delay,medium,detector,15.63286145404664,11.460118083888144,Express Carrier Upgrade,0.6299579890028432,942.5132803807605,request_human_approval,['min_confidence_auto_approve'],True
+2017-12-24,delivery_delay,high,detector,15.63286145404664,10.068792832954438,Express Carrier Upgrade,0.6152729828650425,2090.3566124010686,request_human_approval,['min_confidence_auto_approve'],True
+2017-12-25,customer_satisfaction,medium,detector,3.264705882352941,4.25668449197861,Service Recovery Credits,0.7109619164619165,2174.3315508021406,request_human_approval,['min_confidence_auto_approve'],True
+2017-12-27,delivery_delay,medium,detector,17.715840695638335,12.352749393470036,Express Carrier Upgrade,0.6240497842546283,1924.5503242888462,request_human_approval,['min_confidence_auto_approve'],True
+2017-12-31,delivery_delay,medium,detector,16.56348831300813,11.592152430120983,Express Carrier Upgrade,0.6244771938630717,1601.352103381896,request_human_approval,['min_confidence_auto_approve'],True
+2018-01-01,customer_satisfaction,medium,detector,3.185185185185185,4.25668449197861,Service Recovery Credits,0.714868113418729,2428.7977817389574,request_human_approval,['min_confidence_auto_approve'],True
+2018-01-02,delivery_delay,medium,detector,22.67037878787879,15.351825803288357,Express Carrier Upgrade,0.6207339626851286,3537.806212287109,request_human_approval,['min_confidence_auto_approve'],True
+2018-01-07,delivery_delay,medium,threshold,27.91450454059829,23.9304023789879,Express Carrier Upgrade,0.5700000000000001,-2500.0,request_human_approval,['min_confidence_auto_approve'],True
+2018-01-08,customer_satisfaction,medium,detector,3.2522522522522523,3.761764705882353,Service Recovery Credits,0.6932997392862963,630.4398516163233,request_human_approval,['min_confidence_auto_approve'],True
+2018-01-14,customer_satisfaction,medium,detector,3.7311827956989245,3.2187187187187187,Service Recovery Credits,0.6580184464002908,639.8850463366584,request_human_approval,['min_confidence_auto_approve'],True
+2018-01-16,customer_satisfaction,medium,detector,4.405405405405405,3.502763308347097,Service Recovery Credits,0.6499126937979209,1888.4547105865863,request_human_approval,['min_confidence_auto_approve'],True
+2018-01-22,customer_satisfaction,medium,detector,4.095238095238095,3.2584790673025967,Service Recovery Credits,0.6499810145302621,1677.6288893935957,request_human_approval,['min_confidence_auto_approve'],True
+2018-02-13,customer_satisfaction,medium,detector,3.3164556962025316,4.262423613513201,Service Recovery Credits,0.7087281521225387,2027.0973353941422,request_human_approval,['min_confidence_auto_approve'],True
+2018-03-12,customer_satisfaction,medium,detector,4.27906976744186,3.7068151147098516,Service Recovery Credits,0.6584519890864284,831.21488874243,request_human_approval,['min_confidence_auto_approve'],True
+2018-03-14,revenue,medium,detector,23528.79,36484.43,Inventory Clearance,0.7403349488010221,5030.0380000000005,request_human_approval,"['min_confidence_auto_approve', 'critical_metrics']",True
+2018-03-25,customer_satisfaction,high,threshold,2.8205128205128207,3.0,Service Recovery Credits,0.5825,-1000.0,request_human_approval,['min_confidence_auto_approve'],True
+2018-03-26,customer_satisfaction,high,threshold,2.8205128205128207,3.0,Service Recovery Credits,0.5825,-1000.0,request_human_approval,['min_confidence_auto_approve'],True
+2018-03-30,orders,medium,detector,165.0,235.5,Checkout Optimization,0.7465909090909091,210.0,request_human_approval,['min_confidence_auto_approve'],True
+2018-03-31,customer_satisfaction,high,threshold,2.0,3.0,Service Recovery Credits,0.5825,-1000.0,request_human_approval,['min_confidence_auto_approve'],True
+2018-04-01,customer_satisfaction,high,detector,4.333333333333333,3.2375352112676055,Service Recovery Credits,0.6441548212351029,2506.553990610328,request_human_approval,['min_confidence_auto_approve'],True
+2018-04-15,delivery_delay,high,detector,21.896533764367817,14.700381197729989,Express Carrier Upgrade,0.6197738294895132,3436.825867476211,request_human_approval,['min_confidence_auto_approve'],True
+2018-04-19,revenue,medium,detector,43080.23,32618.495000000003,Inventory Clearance,0.6332161865198956,3907.780749999998,request_human_approval,"['min_confidence_auto_approve', 'critical_metrics']",True
+2018-04-21,delivery_delay,medium,detector,17.606212915721844,14.273487584584723,Express Carrier Upgrade,0.6427667255718247,249.49839818812507,request_human_approval,['min_confidence_auto_approve'],True
+2018-04-27,revenue,medium,detector,40680.04,27930.64,Inventory Clearance,0.6236900858504564,4937.230000000003,request_human_approval,"['min_confidence_auto_approve', 'critical_metrics']",True
+2018-04-29,revenue,medium,detector,19302.7,28373.78,Inventory Clearance,0.7294416843239547,3281.986000000001,request_human_approval,"['min_confidence_auto_approve', 'critical_metrics']",True
+2018-05-04,orders,high,detector,265.0,197.5,Checkout Optimization,0.6442924528301887,150.0,request_human_approval,['min_confidence_auto_approve'],True
+2018-05-05,orders,medium,detector,195.0,160.0,Checkout Optimization,0.6555769230769231,-500.0,request_human_approval,['min_confidence_auto_approve'],True
+2018-05-06,delivery_delay,medium,detector,22.967514467592594,16.884895503340225,Express Carrier Upgrade,0.630302100929651,2518.1606455082065,request_human_approval,['min_confidence_auto_approve'],True
+2018-05-07,orders,high,detector,369.0,266.0,Checkout Optimization,0.640630081300813,860.0,request_human_approval,['min_confidence_auto_approve'],True
+2018-05-08,orders,medium,detector,327.0,259.0,Checkout Optimization,0.6513073394495413,160.0,request_human_approval,['min_confidence_auto_approve'],True
+2018-05-15,orders,medium,detector,351.0,267.0,Checkout Optimization,0.6466025641025641,480.0,request_human_approval,['min_confidence_auto_approve'],True
+2018-05-17,revenue,medium,detector,31450.63,42789.0,Inventory Clearance,0.714669293747057,4302.2665000000015,request_human_approval,"['min_confidence_auto_approve', 'critical_metrics']",True
+2018-05-19,delivery_delay,medium,detector,9.299042038690475,14.634693092135656,Express Carrier Upgrade,0.7686745288552791,1901.912119092276,auto_approve,[],True
+2018-05-20,delivery_delay,medium,detector,9.299042038690475,16.336875537893924,Express Carrier Upgrade,0.798877651110404,3306.2126368428453,auto_approve,[],True
+2018-05-21,orders,medium,detector,201.0,324.0,Checkout Optimization,0.7742910447761194,1260.0,auto_approve,[],True
+2018-05-22,orders,medium,detector,197.0,298.5,Checkout Optimization,0.7597842639593908,830.0,auto_approve,[],True
+2018-05-23,orders,high,detector,132.0,318.0,Checkout Optimization,0.8325,2520.0,auto_approve,[],True
+2018-05-24,orders,high,detector,114.0,265.5,Checkout Optimization,0.8325,1830.0,auto_approve,[],True
+2018-05-25,orders,medium,detector,103.0,243.5,Checkout Optimization,0.8325,1610.0,auto_approve,[],True
+2018-05-26,delivery_delay,medium,detector,17.414746455439815,13.406281177506692,Express Carrier Upgrade,0.6360208785381216,806.9838542948269,request_human_approval,['min_confidence_auto_approve'],True
+2018-05-27,orders,medium,detector,100.0,188.0,Checkout Optimization,0.8145,560.0,auto_approve,[],True
+2018-05-28,orders,medium,detector,142.0,301.5,Checkout Optimization,0.8325,1990.0,auto_approve,[],True
+2018-05-30,delivery_delay,high,detector,17.609756487573097,11.55165305514464,Express Carrier Upgrade,0.6172367467968063,2497.935331753478,request_human_approval,['min_confidence_auto_approve'],True
+2018-05-31,delivery_delay,high,detector,17.609756487573097,11.405747356914663,Express Carrier Upgrade,0.6158696387266331,2618.3075327932083,request_human_approval,['min_confidence_auto_approve'],True
+2018-06-01,customer_satisfaction,high,threshold,2.7017543859649122,3.0,Service Recovery Credits,0.5825,-1000.0,request_human_approval,['min_confidence_auto_approve'],True
+2018-06-04,customer_satisfaction,medium,detector,4.542857142857143,3.8197831978319785,Service Recovery Credits,0.6553999335276371,1313.8366240805226,request_human_approval,['min_confidence_auto_approve'],True
+2018-06-11,revenue,high,detector,49669.7,27662.435,Inventory Clearance,0.606185248249939,9103.269249999998,request_human_approval,"['min_confidence_auto_approve', 'critical_metrics']",True
+2018-07-18,orders,medium,detector,305.0,215.0,Checkout Optimization,0.6382377049180328,600.0,request_human_approval,['min_confidence_auto_approve'],True
+2018-07-31,revenue,medium,detector,45062.8,27977.949999999997,Inventory Clearance,0.6148168788890171,6888.182500000003,request_human_approval,"['min_confidence_auto_approve', 'critical_metrics']",True
+2018-08-13,customer_satisfaction,medium,detector,3.4788732394366195,4.067253607238934,Service Recovery Credits,0.6947955495290515,882.8171769674072,request_human_approval,['min_confidence_auto_approve'],True
+2018-08-19,customer_satisfaction,medium,detector,3.5277777777777777,3.996276595744681,Service Recovery Credits,0.6904363377450159,499.19621749409157,request_human_approval,['min_confidence_auto_approve'],True
+2018-08-20,customer_satisfaction,medium,detector,3.5277777777777777,3.996276595744681,Service Recovery Credits,0.6904363377450159,499.19621749409157,request_human_approval,['min_confidence_auto_approve'],True

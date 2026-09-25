@@ -4,11 +4,19 @@ import json
 import numpy as np
 import pytest
 
+from agents.observer_agent import REPLAY_START
 from backend.models.schemas import AgentType
+from backend.services.olist_metrics import daily_metrics
 from tests.conftest import until
 
 
-def seed_history(observer, metric, center, spread, n=30):
+def day(observer, **overrides):
+    """A typical next day (median of the same weekday over the last 4 weeks), with overrides."""
+    typical = {m: float(np.median(h[-28::7])) for m, h in observer.metric_history.items()}
+    return {**typical, **overrides}
+
+
+def seed_history(observer, metric, center, spread, n=60):
     rng = np.random.default_rng(0)
     observer.metric_history[metric] = list(center + rng.normal(0, spread, n))
 
@@ -29,12 +37,14 @@ async def test_large_deviation_is_flagged_high_severity(pipeline):
     assert found["expected_value"] == pytest.approx(15000, rel=0.05)
 
 
-async def test_moderate_deviation_is_flagged_medium_severity(pipeline):
+async def test_moderate_deviation_is_never_high_severity(pipeline):
+    """A ~2.7 sigma day may or may not be flagged (the validated detector needs |z| > 3.5 or a forest
+    outlier), but it must never be escalated to HIGH."""
     observer = pipeline["observer"]
     seed_history(observer, "revenue", 15000, 300)
     mean, std = np.mean(observer.metric_history["revenue"]), np.std(observer.metric_history["revenue"])
-    (found,) = await observer._detect_anomalies({"revenue": mean + 2.7 * std})
-    assert found["severity"] == "medium"
+    found = await observer._detect_anomalies({"revenue": mean + 2.7 * std})
+    assert all(f["severity"] == "medium" for f in found)
 
 
 async def test_flat_history_does_not_divide_by_zero(pipeline):
@@ -63,8 +73,7 @@ async def test_process_alerts_and_notifies_analyst_over_pubsub(pipeline, redis, 
     observer, analyst = pipeline["observer"], pipeline["analyst"]
 
     async def metrics():
-        return {"revenue": 500.0, "orders": 150, "churn_risk": 0.1, "delivery_delay": 2.0,
-                "customer_satisfaction": 4.2}
+        return day(observer, revenue=500.0)
 
     monkeypatch.setattr(observer, "_get_current_metrics", metrics)
     await observer.process()
@@ -95,25 +104,35 @@ async def test_alert_list_is_capped_at_100(pipeline, redis):
     assert await redis.llen("alerts") == 100
 
 
-async def test_metric_feed_does_not_compound_over_many_cycles(pipeline, monkeypatch):
-    """Regression: each cycle used the previous output as its base, so the evening multiplier (0.7)
-    compounded to ~0 within minutes (revenue 0.00, orders 0) and flooded the pipeline with alerts."""
-    from datetime import datetime as real_datetime
-
-    class Evening(real_datetime):
-        @classmethod
-        def utcnow(cls):
-            return real_datetime(2026, 1, 12, 18, 0, 0)  # sin(2*pi*18/24) = -1 -> multiplier 0.7
-
-    monkeypatch.setattr("agents.observer_agent.datetime", Evening)
+async def test_metric_feed_replays_olist_days_in_order_and_wraps(pipeline):
     observer = pipeline["observer"]
-    for _ in range(300):
-        metrics = await observer._get_current_metrics()
+    feed = daily_metrics()
 
-    assert 5000 < metrics["revenue"] < 30000
-    assert 50 < metrics["orders"] < 400
-    assert 0.02 < metrics["churn_risk"] < 0.6
-    assert metrics["customer_satisfaction"] >= 1
+    first = await observer._get_current_metrics()
+    assert first == pytest.approx(feed.iloc[REPLAY_START].to_dict())
+    second = await observer._get_current_metrics()
+    assert second == pytest.approx(feed.iloc[REPLAY_START + 1].to_dict())
+
+    for _ in range(len(feed)):  # run past the end of the data
+        metrics = await observer._get_current_metrics()
+        assert set(metrics) == set(feed.columns)
+    assert observer._cursor <= len(feed)
+
+
+async def test_warm_up_history_is_the_days_before_the_replay(pipeline):
+    observer = pipeline["observer"]
+    feed = daily_metrics()
+    assert observer.metric_history["revenue"] == pytest.approx(
+        feed["revenue"].iloc[:REPLAY_START].tolist())
+
+
+async def test_multivariate_anomaly_is_attributed_to_the_deviating_metric(pipeline):
+    observer = pipeline["observer"]
+    typical = day(observer)
+    (found,) = await observer._detect_anomalies({**typical, "delivery_delay": 40.0})
+    assert found["metric_type"] == "delivery_delay"
+    assert found["z_score"] > 3 and found["severity"] == "high"
+    assert await observer._detect_anomalies(typical) == []
 
 
 async def test_steady_state_metrics_do_not_cause_an_alert_storm(pipeline, redis, monkeypatch):
@@ -129,8 +148,7 @@ async def test_persistent_violation_alerts_once_per_cooldown(pipeline, redis, mo
     observer._now = lambda: clock[0]
 
     async def broken():
-        return {"revenue": 500.0, "orders": 150, "churn_risk": 0.1, "delivery_delay": 2.0,
-                "customer_satisfaction": 4.2}
+        return day(observer, revenue=500.0)
 
     monkeypatch.setattr(observer, "_get_current_metrics", broken)
 
@@ -148,8 +166,7 @@ async def test_different_conditions_are_not_suppressed_by_each_other(pipeline, r
     observer = pipeline["observer"]
 
     async def broken():
-        return {"revenue": 500.0, "orders": 5, "churn_risk": 0.9, "delivery_delay": 2.0,
-                "customer_satisfaction": 4.2}
+        return day(observer, revenue=500.0, orders=5, churn_risk=0.9)
 
     monkeypatch.setattr(observer, "_get_current_metrics", broken)
     await observer.process()

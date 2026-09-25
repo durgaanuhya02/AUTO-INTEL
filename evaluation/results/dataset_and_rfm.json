@@ -1,0 +1,142 @@
+{
+  "dataset": {
+    "orders": 99441,
+    "order_items": 112650,
+    "revenue_brl": 13591643.700000003,
+    "aov_brl": 137.7540763788945,
+    "unique_customers": 96096,
+    "products": 32951,
+    "categories": 73,
+    "states": 27,
+    "payment_types": 5,
+    "mean_review_score": 4.08642062404257,
+    "on_time_rate": 0.9188763346117964,
+    "mean_delivery_days": 12.558217098051975,
+    "first_purchase": "2016-09-04",
+    "last_purchase": "2018-10-17",
+    "evaluation_window": [
+      "2017-02-01",
+      "2018-08-22"
+    ],
+    "evaluation_days": 568,
+    "daily_mean": {
+      "revenue": 23368.976848591552,
+      "orders": 170.1161971830986,
+      "customer_satisfaction": 3.9965331185745288,
+      "delivery_delay": 12.38911942630756
+    },
+    "daily_std": {
+      "revenue": 11931.211226233654,
+      "orders": 86.48040965411424,
+      "customer_satisfaction": 0.3583701362530837,
+      "delivery_delay": 2.734181371829024
+    }
+  },
+  "rfm": {
+    "customers_with_valid_orders": 94990,
+    "one_time_buyer_share": 0.9695967996631224,
+    "frequency_distribution": {
+      "1": 92102,
+      "2": 2652,
+      "3": 188,
+      "4": 29,
+      "5": 9,
+      "6": 5,
+      "7": 3,
+      "9": 1,
+      "16": 1
+    },
+    "segment_rules_in_priority_order": [
+      "Champions",
+      "Loyal",
+      "Lapsed Repeat",
+      "High-Value New",
+      "Low-Value New",
+      "High-Value Lapsing",
+      "Hibernating",
+      "Needs Attention"
+    ],
+    "segments": [
+      {
+        "segment": "Champions",
+        "customers": 960,
+        "revenue": 313710.96,
+        "mean_monetary": 326.78225000000003,
+        "mean_recency": 94.22708333333334,
+        "mean_frequency": 2.1947916666666667,
+        "pct_customers": 1.0106326981787557,
+        "pct_revenue": 2.324749101826362
+      },
+      {
+        "segment": "Loyal",
+        "customers": 894,
+        "revenue": 178728.44,
+        "mean_monetary": 199.9199552572707,
+        "mean_recency": 181.80648769574944,
+        "mean_frequency": 2.068232662192394,
+        "pct_customers": 0.9411517001789662,
+        "pct_revenue": 1.3244637049366297
+      },
+      {
+        "segment": "Lapsed Repeat",
+        "customers": 1034,
+        "revenue": 258057.02,
+        "mean_monetary": 249.57158607350095,
+        "mean_recency": 387.95938104448743,
+        "mean_frequency": 2.0783365570599615,
+        "pct_customers": 1.0885356353300348,
+        "pct_revenue": 1.9123266380778903
+      },
+      {
+        "segment": "High-Value New",
+        "customers": 14731,
+        "revenue": 3946893.41,
+        "mean_monetary": 267.9311255176159,
+        "mean_recency": 96.94250220623175,
+        "mean_frequency": 1.0,
+        "pct_customers": 15.507948205074218,
+        "pct_revenue": 29.248378538964296
+      },
+      {
+        "segment": "Low-Value New",
+        "customers": 22023,
+        "revenue": 1225365.69,
+        "mean_monetary": 55.6402710802343,
+        "mean_recency": 94.64818598737683,
+        "mean_frequency": 1.0,
+        "pct_customers": 23.184545741657015,
+        "pct_revenue": 9.080549137449136
+      },
+      {
+        "segment": "High-Value Lapsing",
+        "customers": 14003,
+        "revenue": 3891587.33,
+        "mean_monetary": 277.9109712204528,
+        "mean_recency": 400.642505177462,
+        "mean_frequency": 1.0,
+        "pct_customers": 14.741551742288662,
+        "pct_revenue": 28.838533885129007
+      },
+      {
+        "segment": "Hibernating",
+        "customers": 15519,
+        "revenue": 620747.73,
+        "mean_monetary": 39.99920935627296,
+        "mean_recency": 401.72710870545785,
+        "mean_frequency": 1.0,
+        "pct_customers": 16.33750921149595,
+        "pct_revenue": 4.6000392456108425
+      },
+      {
+        "segment": "Needs Attention",
+        "customers": 25826,
+        "revenue": 3059310.16,
+        "mean_monetary": 118.45853635870829,
+        "mean_recency": 275.4557809958956,
+        "mean_frequency": 1.0,
+        "pct_customers": 27.1881250657964,
+        "pct_revenue": 22.67095974800582
+      }
+    ]
+  }
+}

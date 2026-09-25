@@ -1,0 +1,90 @@
+{
+  "hardware": {
+    "python": "3.13.14",
+    "platform": "Windows-11-10.0.26100-SP0",
+    "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+    "cpu_count_logical": 8,
+    "cpu_count_physical": 4,
+    "ram_gb": 7.8
+  },
+  "days_replayed": 480,
+  "anomalies": 94,
+  "chains_completed": 94,
+  "anomalies_by_metric": {
+    "customer_satisfaction": 30,
+    "delivery_delay": 24,
+    "orders": 23,
+    "revenue": 17
+  },
+  "anomalies_by_source": {
+    "detector": 83,
+    "threshold": 11
+  },
+  "severity": {
+    "medium": 65,
+    "high": 29
+  },
+  "scenarios": {
+    "Service Recovery Credits": 30,
+    "Checkout Optimization": 24,
+    "Express Carrier Upgrade": 24,
+    "Inventory Clearance": 16
+  },
+  "actions": {
+    "request_human_approval": 84,
+    "auto_approve": 10
+  },
+  "violation_counts": {
+    "min_confidence_auto_approve": 84,
+    "critical_metrics": 16
+  },
+  "latency": {
+    "observer": {
+      "mean_ms": 439.4752312504958,
+      "std_ms": 896.1412994533406,
+      "p50_ms": 370.49410003237426,
+      "p95_ms": 707.1892799634936,
+      "n": 480
+    },
+    "analyst": {
+      "mean_ms": 21.22826383082553,
+      "std_ms": 61.05363449064225,
+      "p50_ms": 11.37655001366511,
+      "p95_ms": 20.08897496853023,
+      "n": 94
+    },
+    "simulation": {
+      "mean_ms": 1.919732985156093,
+      "std_ms": 2.3008353971663347,
+      "p50_ms": 1.4072000049054623,
+      "p95_ms": 2.886014978867021,
+      "n": 94
+    },
+    "decision": {
+      "mean_ms": 7.348337235484035,
+      "std_ms": 39.128472878868706,
+      "p50_ms": 1.5820999979041517,
+      "p95_ms": 6.427429959876463,
+      "n": 94
+    },
+    "governance": {
+      "mean_ms": 7.6660499883260815,
+      "std_ms": 28.580237770970314,
+      "p50_ms": 3.048049984499812,
+      "p95_ms": 10.873155033914344,
+      "n": 94
+    },
+    "chain_after_observer": {
+      "mean_ms": 52.04740850046832,
+      "std_ms": 140.06559464529548,
+      "p50_ms": 24.36189993750304,
+      "p95_ms": 132.7177700120955,
+      "n": 94
+    }
+  },
+  "cold_start": {
+    "load_csvs_s": 2.940331800025888,
+    "daily_metrics_s": 4.017638099961914,
+    "rfm_s": 1.0605910000158474
+  }
+}

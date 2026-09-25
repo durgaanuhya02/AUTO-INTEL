@@ -13,6 +13,7 @@ import json
 
 from ..core.database import AsyncSessionLocal, get_redis
 from ..models.database_models import Metric
+from .olist_metrics import customer_rfm, rfm_summary
 
 class AdvancedAnalytics:
     """
@@ -458,80 +459,24 @@ class AdvancedAnalytics:
                 await asyncio.sleep(3600)
     
     async def _get_customer_data(self) -> Optional[pd.DataFrame]:
-        """Get customer data for segmentation"""
-        # In production, this would query your customer database
-        # For now, we'll generate synthetic customer data
-        
-        n_customers = 500
-        data = []
-        
-        for i in range(n_customers):
-            recency = np.random.exponential(30)
-            frequency = np.random.poisson(5)
-            monetary = np.random.lognormal(4, 1)
-            
-            data.append({
-                'customer_id': f'cust_{i}',
-                'recency': recency,
-                'frequency': frequency,
-                'monetary': monetary
-            })
-        
-        return pd.DataFrame(data)
-    
+        """Per-customer RFM table for every Olist customer (see olist_metrics.customer_rfm)."""
+        return await asyncio.to_thread(customer_rfm)
+
     async def _perform_rfm_analysis(self, customer_data: pd.DataFrame) -> Dict[str, Any]:
-        """Perform RFM (Recency, Frequency, Monetary) analysis"""
+        """Summarise the RFM segments computed by olist_metrics.customer_rfm."""
         try:
-            # Calculate RFM scores
-            customer_data['R_score'] = pd.qcut(customer_data['recency'], 5, labels=[5,4,3,2,1])
-            customer_data['F_score'] = pd.qcut(customer_data['frequency'].rank(method='first'), 5, labels=[1,2,3,4,5])
-            customer_data['M_score'] = pd.qcut(customer_data['monetary'], 5, labels=[1,2,3,4,5])
-            
-            # Create RFM segments
-            customer_data['RFM_Score'] = (
-                customer_data['R_score'].astype(str) + 
-                customer_data['F_score'].astype(str) + 
-                customer_data['M_score'].astype(str)
-            )
-            
-            # Define segment names
-            def segment_customers(row):
-                if row['RFM_Score'] in ['555', '554', '544', '545', '454', '455', '445']:
-                    return 'Champions'
-                elif row['RFM_Score'] in ['543', '444', '435', '355', '354', '345', '344', '335']:
-                    return 'Loyal Customers'
-                elif row['RFM_Score'] in ['512', '511', '422', '421', '412', '411', '311']:
-                    return 'Potential Loyalists'
-                elif row['RFM_Score'] in ['533', '532', '531', '523', '522', '521', '515', '514', '513', '425', '424', '413', '414', '415', '315', '314', '313']:
-                    return 'New Customers'
-                elif row['RFM_Score'] in ['155', '154', '144', '214', '215', '115', '114']:
-                    return 'At Risk'
-                elif row['RFM_Score'] in ['155', '154', '144', '214', '215', '115', '114']:
-                    return 'Cannot Lose Them'
-                else:
-                    return 'Others'
-            
-            customer_data['Segment'] = customer_data.apply(segment_customers, axis=1)
-            
-            # Calculate segment statistics
-            segment_stats = customer_data.groupby('Segment').agg({
-                'customer_id': 'count',
-                'recency': 'mean',
-                'frequency': 'mean',
-                'monetary': 'mean'
-            }).round(2)
-            
+            summary = rfm_summary(customer_data).round(2)
             return {
-                'segment_counts': segment_stats['customer_id'].to_dict(),
-                'segment_stats': segment_stats.to_dict(),
+                'segment_counts': summary['customers'].astype(int).to_dict(),
+                'segment_stats': summary.to_dict(),
                 'total_customers': len(customer_data),
                 'analysis_date': datetime.utcnow().isoformat()
             }
-            
+
         except Exception as e:
             self.logger.error(f"Error in RFM analysis: {e}")
             return {}
-    
+
     async def _store_segmentation_results(self, segments: Dict[str, Any]):
         """Store customer segmentation results"""
         try:

@@ -1,29 +1,39 @@
-import pandas as pd
 import numpy as np
 from typing import Dict, Any, List
-from datetime import datetime, timedelta
-from sklearn.ensemble import IsolationForest
-from sklearn.preprocessing import StandardScaler
-import asyncio
+from datetime import datetime
 import json
 import time
 
 from .base_agent import BaseAgent
-from backend.models.schemas import AgentType, MetricType, AlertSeverity, AlertCreate
+from backend.models.schemas import AgentType, MetricType, AlertSeverity
+from backend.services.anomaly_detection import MultivariateAnomalyDetector, aligned_history
+from backend.services.olist_metrics import METRICS, daily_metrics
 
-# Simulated business baseline. Variation is always applied to THIS, never to the previous
-# cycle's output: feeding output back in compounds the daily multiplier every cycle, so metrics
-# decay to zero (or explode) within minutes and flood the pipeline with bogus alerts.
-BASELINE_METRICS = {
-    "revenue": 15000.0,
-    "orders": 150,
-    "churn_risk": 0.15,
-    "delivery_delay": 2.5,
-    "customer_satisfaction": 4.2,
-}
+# Trailing window (days) the detector is fitted on, and how many past values are kept per metric.
+DETECTION_WINDOW = 60
+HISTORY_LIMIT = 120
+# Detector settings, selected on the 2017 validation split by evaluation/run_anomaly.py
+# (best validation F1: weekday-adjusted hybrid, contamination 0.15, |z| > 3.5).
+DETECTOR_CONFIG = {"contamination": 0.15, "z_threshold": 3.5, "seasonal_period": 7,
+                   "seasonal_cycles": 4}
+# The replay starts once the warm-up history covers the window plus the weekday baseline.
+REPLAY_START = DETECTION_WINDOW + DETECTOR_CONFIG["seasonal_period"] * DETECTOR_CONFIG["seasonal_cycles"]
+
+
+def baseline_metrics() -> Dict[str, float]:
+    """Typical day in the Olist data (median of each daily metric)."""
+    return daily_metrics().median().to_dict()
 
 
 class ObserverAgent(BaseAgent):
+    """Replays the Olist daily metrics one day per cycle and flags anomalous days.
+
+    Detection is a hybrid multivariate Isolation Forest + per-metric z-score over the trailing
+    DETECTION_WINDOW days of weekday-adjusted values; each anomaly is attributed to the metric that
+    deviates most so it can be routed to metric-specific analysis and scenarios. Hard thresholds on
+    the raw values are checked independently.
+    """
+
     def __init__(self, redis_client, db_session):
         super().__init__(AgentType.OBSERVER, redis_client)
         self.db_session = db_session
@@ -31,21 +41,27 @@ class ObserverAgent(BaseAgent):
         self.alert_cooldown_seconds = 900
         self._last_alert_at: Dict[str, float] = {}
         self._now = time.monotonic
-        self.anomaly_detector = IsolationForest(contamination=0.1, random_state=42)
-        self.scaler = StandardScaler()
-        self.metric_history = {}
-        self.thresholds = {
-            MetricType.REVENUE: {"min": 1000, "max": 100000},
-            MetricType.ORDERS: {"min": 10, "max": 1000},
+        self.detector = MultivariateAnomalyDetector(METRICS, random_state=42, **DETECTOR_CONFIG)
+        self.metric_history: Dict[str, List[float]] = {}
+        self._feed = daily_metrics()
+        self._cursor = REPLAY_START
+        self.thresholds = self._thresholds_from_data()
+
+    def _thresholds_from_data(self) -> Dict[str, Dict[str, float]]:
+        """Hard business limits, scaled from the median day rather than hand-picked constants."""
+        median = self._feed.median()
+        return {
+            MetricType.REVENUE: {"min": 0.25 * median["revenue"], "max": 5 * median["revenue"]},
+            MetricType.ORDERS: {"min": 0.25 * median["orders"], "max": 5 * median["orders"]},
+            MetricType.CUSTOMER_SATISFACTION: {"min": 3.0, "max": 5.0},
+            MetricType.DELIVERY_DELAY: {"min": 0.0, "max": 2 * median["delivery_delay"]},
             MetricType.CHURN_RISK: {"min": 0.0, "max": 0.3},
-            MetricType.DELIVERY_DELAY: {"min": 0.0, "max": 5.0}
         }
 
     async def initialize(self):
         """Initialize the observer agent"""
         await self.update_status("initializing", "Loading historical data")
         await self._load_historical_data()
-        await self._train_anomaly_detector()
         await self.update_status("active", "Monitoring metrics")
         self.logger.info("Observer agent initialized successfully")
 
@@ -101,29 +117,14 @@ class ObserverAgent(BaseAgent):
             await self.update_status("error", f"Processing error: {str(e)}")
 
     async def _get_current_metrics(self) -> Dict[str, float]:
-        """Get current business metrics from the database"""
-        # In a real system, this would query the database
-        # For demo, we'll simulate with some realistic values
+        """Next day of the Olist replay. Wraps to the first post-warm-up day at the end of the data."""
+        if self._cursor >= len(self._feed):
+            self._cursor = REPLAY_START
+        day = self._feed.index[self._cursor]
+        current_metrics = {m: float(v) for m, v in self._feed.iloc[self._cursor].items()}
+        self._cursor += 1
 
-        base_metrics = BASELINE_METRICS
-
-        # Add realistic variations
-        current_time = datetime.utcnow()
-        hour = current_time.hour
-
-        # Simulate daily patterns
-        daily_multiplier = 1.0 + 0.3 * np.sin(2 * np.pi * hour / 24)
-
-        current_metrics = {
-            "revenue": base_metrics["revenue"] * daily_multiplier * (1 + np.random.normal(0, 0.1)),
-            "orders": int(base_metrics["orders"] * daily_multiplier * (1 + np.random.normal(0, 0.15))),
-            "churn_risk": max(0, min(1, base_metrics["churn_risk"] * (1 + np.random.normal(0, 0.2)))),
-            "delivery_delay": max(0, base_metrics["delivery_delay"] * (1 + np.random.normal(0, 0.3))),
-            "customer_satisfaction": max(1, min(5, base_metrics["customer_satisfaction"] * (1 + np.random.normal(0, 0.05))))
-        }
-
-        # Store for next iteration
-        await self.store_data("current_metrics", current_metrics, 300)
+        await self.store_data("current_metrics", {**current_metrics, "date": day.date().isoformat()}, 300)
 
         return current_metrics
 
@@ -137,32 +138,44 @@ class ObserverAgent(BaseAgent):
         self._last_alert_at[key] = now
         return True
 
+    def _judgeable_metrics(self, current_metrics: Dict[str, float]) -> List[str]:
+        """Metrics with enough, non-constant history to be scored."""
+        needed = self.detector.lookback + self.detector.min_history
+        judgeable = []
+        for name in current_metrics:
+            history = self.metric_history.get(name, [])
+            if len(history) >= needed and np.std(history[-DETECTION_WINDOW:]) > 0:
+                judgeable.append(name)
+        return judgeable
+
     async def _detect_anomalies(self, current_metrics: Dict[str, float]) -> List[Dict[str, Any]]:
-        """Detect anomalies in current metrics using ML"""
-        anomalies = []
+        """Score today's metric vector against the trailing window (see ObserverAgent).
 
-        for metric_name, value in current_metrics.items():
-            if metric_name in self.metric_history and len(self.metric_history[metric_name]) > 10:
-                history = self.metric_history[metric_name]
+        Returns at most one anomaly per day, attributed to the metric with the largest |z|.
+        """
+        metrics = self._judgeable_metrics(current_metrics)
+        if not metrics:
+            return []
 
-                # Use statistical approach for anomaly detection
-                mean_val = np.mean(history)
-                std_val = np.std(history)
-                z_score = abs((value - mean_val) / std_val) if std_val > 0 else 0
+        detector = MultivariateAnomalyDetector(metrics, random_state=self.detector.random_state,
+                                               **DETECTOR_CONFIG)
+        history = aligned_history(self.metric_history, metrics, DETECTION_WINDOW + detector.lookback)
+        detection = detector.detect(history, np.array([current_metrics[m] for m in metrics]))
+        if detection is None or not detection.is_anomaly:
+            return []
 
-                if z_score > 2.5:  # 2.5 standard deviations
-                    severity = AlertSeverity.HIGH if z_score > 3 else AlertSeverity.MEDIUM
-
-                    anomalies.append({
-                        "metric_type": metric_name,
-                        "current_value": value,
-                        "expected_value": mean_val,
-                        "z_score": z_score,
-                        "severity": severity,
-                        "description": f"{metric_name} anomaly detected: {value:.2f} (expected ~{mean_val:.2f})"
-                    })
-
-        return anomalies
+        metric = detection.metric
+        value, expected = current_metrics[metric], detection.expected[metric]
+        return [{
+            "metric_type": metric,
+            "current_value": value,
+            "expected_value": expected,
+            "z_score": abs(detection.z_scores[metric]),
+            "anomaly_score": detection.score,
+            "z_scores": detection.z_scores,
+            "severity": AlertSeverity(detection.severity),
+            "description": f"{metric} anomaly detected: {value:.2f} (expected ~{expected:.2f})"
+        }]
 
     async def _check_thresholds(self, current_metrics: Dict[str, float]) -> List[Dict[str, Any]]:
         """Check if metrics violate predefined thresholds"""
@@ -216,45 +229,9 @@ class ObserverAgent(BaseAgent):
         self.logger.warning(f"Alert created: {issue['description']}")
 
     async def _load_historical_data(self):
-        """Load historical metric data for baseline establishment"""
-        # Initialize with some historical data for demo
-        for metric_type in ["revenue", "orders", "churn_risk", "delivery_delay", "customer_satisfaction"]:
-            # Generate 30 days of historical data
-            history = []
-            base_value = {
-                "revenue": 15000,
-                "orders": 150,
-                "churn_risk": 0.15,
-                "delivery_delay": 2.5,
-                "customer_satisfaction": 4.2
-            }[metric_type]
-
-            for i in range(30):
-                # Add daily variation
-                daily_var = 1.0 + 0.2 * np.sin(2 * np.pi * i / 7)  # Weekly pattern
-                noise = np.random.normal(0, 0.1)
-                value = base_value * daily_var * (1 + noise)
-                history.append(max(0, value))
-
-            self.metric_history[metric_type] = history
-
-    async def _train_anomaly_detector(self):
-        """Train the anomaly detection model on historical data"""
-        if not self.metric_history:
-            return
-
-        # Prepare training data
-        training_data = []
-        for metric_values in self.metric_history.values():
-            training_data.extend([[v] for v in metric_values])
-
-        if len(training_data) > 10:
-            training_array = np.array(training_data)
-            self.scaler.fit(training_array)
-            scaled_data = self.scaler.transform(training_array)
-            self.anomaly_detector.fit(scaled_data)
-
-            self.logger.info("Anomaly detector trained successfully")
+        """Seed the history with the Olist days that precede the replay start."""
+        warmup = self._feed.iloc[:self._cursor]
+        self.metric_history = {m: warmup[m].astype(float).tolist() for m in METRICS}
 
     async def _update_metric_history(self, current_metrics: Dict[str, float]):
         """Update the rolling history of metrics"""
@@ -264,6 +241,5 @@ class ObserverAgent(BaseAgent):
 
             self.metric_history[metric_name].append(value)
 
-            # Keep only last 100 values
-            if len(self.metric_history[metric_name]) > 100:
-                self.metric_history[metric_name] = self.metric_history[metric_name][-100:]
+            if len(self.metric_history[metric_name]) > HISTORY_LIMIT:
+                self.metric_history[metric_name] = self.metric_history[metric_name][-HISTORY_LIMIT:]

@@ -445,7 +445,7 @@ class GovernanceAgent(BaseAgent):
 
         self.policy_rules = {
             "version": "1.0",
-            "max_auto_financial_impact": 10000,  # USD
+            "max_auto_financial_impact": 10000,  # R$
             "min_confidence_auto_approve": 0.75,
             "max_auto_risk_score": 0.6,
             "business_hours_start": 9,  # 9 AM
