@@ -19,6 +19,8 @@ from contextlib import asynccontextmanager
 
 # Import our real data processor
 from services.real_data_processor import data_processor, BusinessMetrics
+from services.evaluation_results import (model_cards, next_day_forecast, replayed_decisions,
+                                         rfm_recommendations, segment_counts)
 # from services.real_time_analytics_engine import analytics_engine
 
 # Configure logging
@@ -81,6 +83,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def real_ml_performance() -> Dict[str, Any]:
+    """Measured quality of the deployed models (from evaluation/results), not invented accuracies."""
+    cards = model_cards()
+    return {
+        "models_active": len(cards),
+        "headline_metric_name": cards["anomaly_detection"]["metric_name"],
+        "headline_metric_value": cards["anomaly_detection"]["metric_value"],
+        "forecast_mape": cards["revenue_forecasting"]["metric_value"],
+        "data_points_processed": data_processor.calculate_business_metrics().total_orders,
+        "anomalies_detected": sum(1 for a in real_time_cache.get('alerts', [])
+                                  if 'anomaly' in str(a.get('type', '')).lower()),
+    }
+
+
+def real_predictions() -> Dict[str, Any]:
+    """SARIMA next-day forecasts (with 95% intervals) and RFM segment sizes."""
+    forecast = next_day_forecast()
+    segments = segment_counts()
+    return {
+        "forecast_date": forecast["forecast_date"],
+        "revenue_forecast_24h": forecast["revenue"]["value"],
+        "revenue_interval_95": [forecast["revenue"]["low_95"], forecast["revenue"]["high_95"]],
+        "revenue_test_mape": forecast["revenue"]["test_mape"],
+        "order_volume_forecast": forecast["orders"]["value"],
+        "order_interval_95": [forecast["orders"]["low_95"], forecast["orders"]["high_95"]],
+        "churn_risk_customers": segments.get("High-Value Lapsing", 0),
+        "upsell_opportunities": segments.get("High-Value New", 0),
+        "model_used": model_cards()["revenue_forecasting"]["model"],
+        "prediction_timestamp": datetime.now().isoformat(),
+    }
+
+
 async def initialize_data_processing():
     """Initialize data processing with real dataset"""
     try:
@@ -95,8 +129,12 @@ async def initialize_data_processing():
         real_time_cache['insights'] = insights
         
         real_time_cache['last_update'] = datetime.now()
-        
-        logger.info(f"✅ Processed {metrics.total_orders:,} orders worth ${metrics.total_revenue:,.2f}")
+
+        # Fit the SARIMA forecasts and RFM once, off the event loop.
+        await asyncio.to_thread(next_day_forecast)
+        await asyncio.to_thread(rfm_recommendations)
+
+        logger.info(f"✅ Processed {metrics.total_orders:,} orders worth R${metrics.total_revenue:,.2f}")
         
     except Exception as e:
         logger.error(f"Error initializing data processing: {str(e)}")
@@ -244,17 +282,11 @@ async def update_real_time_data():
             real_time_cache['recent_decisions'] = dynamic_decisions
             
             # Add ML model performance metrics
-            real_time_cache['ml_performance'] = {
-                'models_active': 4,  # Anomaly Detection, Forecasting, Classification, Regression
-                'accuracy': random.uniform(0.87, 0.95),
-                'processing_time_ms': random.uniform(45, 120),
-                'data_points_processed': cycle_count * 1000 + random.randint(800, 1200),
-                'anomalies_detected': sum(1 for _ in range(cycle_count) if random.random() < 0.05)
-            }
+            real_time_cache['ml_performance'] = real_ml_performance()
             
             real_time_cache['last_update'] = datetime.now()
             
-            logger.info(f"📊 ML CYCLE COMPLETE: Revenue=${simulated_metrics.total_revenue:,.0f}, "
+            logger.info(f"📊 ML CYCLE COMPLETE: Revenue=R${simulated_metrics.total_revenue:,.0f}, "
                        f"Orders={simulated_metrics.total_orders:,}, "
                        f"Anomaly Score={anomaly_score:.3f}")
             
@@ -271,42 +303,14 @@ async def generate_advanced_ml_insights(metrics: BusinessMetrics, anomaly_score:
     from datetime import datetime, timedelta
     
     insights = {
-        'ml_models': {
-            'anomaly_detection': {
-                'model': 'Isolation Forest',
-                'status': 'active',
-                'accuracy': random.uniform(0.89, 0.96),
-                'last_trained': (datetime.now() - timedelta(hours=2)).isoformat(),
-                'anomaly_score': anomaly_score,
-                'is_anomaly': is_anomaly
-            },
-            'forecasting': {
-                'model': 'ARIMA + Linear Regression Ensemble',
-                'status': 'active',
-                'accuracy': random.uniform(0.85, 0.93),
-                'next_prediction': metrics.total_revenue * random.uniform(1.02, 1.08),
-                'confidence_interval': [0.85, 0.95]
-            },
-            'classification': {
-                'model': 'Random Forest Customer Segmentation',
-                'status': 'active',
-                'accuracy': random.uniform(0.88, 0.94),
-                'segments_identified': 5,
-                'high_value_customers': random.randint(1200, 1800)
-            }
-        },
-        'real_time_predictions': {
-            'revenue_forecast_24h': metrics.total_revenue * random.uniform(1.01, 1.06),
-            'order_volume_forecast': metrics.total_orders * random.uniform(1.00, 1.04),
-            'churn_risk_customers': random.randint(150, 300),
-            'upsell_opportunities': random.randint(800, 1200)
-        },
+        'ml_models': model_cards(),
+        'live_anomaly_check': {'anomaly_score': float(anomaly_score), 'is_anomaly': bool(is_anomaly)},
+        'real_time_predictions': real_predictions(),
         'csv_data_insights': {
-            'total_customers_analyzed': 99441,
+            'total_customers_analyzed': sum(segment_counts().values()),
             'product_categories_processed': len(metrics.top_categories),
             'geographic_regions': len(metrics.geographic_distribution),
             'payment_methods_tracked': len(metrics.payment_methods),
-            'data_quality_score': random.uniform(0.94, 0.99)
         },
         'business_intelligence': {
             'trend_analysis': 'Declining revenue trend consistent with dataset end-period',
@@ -314,20 +318,14 @@ async def generate_advanced_ml_insights(metrics: BusinessMetrics, anomaly_score:
             'customer_behavior': f'Average satisfaction {metrics.customer_satisfaction:.1f}/5.0 indicates good retention',
             'market_opportunities': f'Top category {metrics.top_categories[0]["name"] if metrics.top_categories else "N/A"} shows growth potential'
         },
-        'alerts_generated': is_anomaly,
-        'recommendations': [
-            'Focus on customer retention strategies' if metrics.monthly_growth < -30 else 'Optimize growth strategies',
-            'Implement dynamic pricing for peak hours' if anomaly_score > 0 else 'Monitor for demand fluctuations',
-            'Expand successful product categories',
-            'Enhance customer satisfaction initiatives'
-        ]
+        'alerts_generated': bool(is_anomaly),
+        'recommendations': rfm_recommendations()
     }
     
     return insights
 
 async def generate_ml_insights(metrics: BusinessMetrics):
     """Generate ML-powered insights and anomalies"""
-    import random
     
     insights = {
         'forecasts': [],
@@ -337,27 +335,18 @@ async def generate_ml_insights(metrics: BusinessMetrics):
     }
     
     try:
-        # Generate forecasts based on current trends
-        revenue_forecast = {
-            'metric': 'revenue',
-            'current': metrics.total_revenue,
-            'predicted_7d': metrics.total_revenue * (1 + random.uniform(-0.05, 0.1)),
-            'predicted_30d': metrics.total_revenue * (1 + random.uniform(-0.1, 0.2)),
-            'confidence': random.uniform(0.75, 0.95),
-            'trend': 'increasing' if metrics.monthly_growth > 0 else 'decreasing'
-        }
-        insights['forecasts'].append(revenue_forecast)
-        
-        orders_forecast = {
-            'metric': 'orders',
-            'current': metrics.total_orders,
-            'predicted_7d': int(metrics.total_orders * (1 + random.uniform(-0.03, 0.08))),
-            'predicted_30d': int(metrics.total_orders * (1 + random.uniform(-0.08, 0.15))),
-            'confidence': random.uniform(0.8, 0.92),
-            'trend': 'increasing' if metrics.monthly_growth > -5 else 'stable'
-        }
-        insights['forecasts'].append(orders_forecast)
-        
+        # SARIMA next-day forecasts with 95% intervals (evaluation_results.next_day_forecast)
+        forecast = next_day_forecast()
+        for metric in ("revenue", "orders"):
+            f = forecast[metric]
+            insights['forecasts'].append({
+                'metric': metric,
+                'forecast_date': forecast['forecast_date'],
+                'predicted_next_day': f['value'],
+                'interval_95': [f['low_95'], f['high_95']],
+                'test_mape': f['test_mape'],
+            })
+
         # Detect anomalies
         if abs(metrics.monthly_growth) > 15:
             insights['anomalies'].append({
@@ -465,11 +454,11 @@ async def generate_intelligent_alerts(metrics: BusinessMetrics):
                 alerts.append({
                     'id': len(alerts) + 1,
                     'title': f'Significant Revenue {change_type.title()}',
-                    'message': f'Revenue {change_type} of ${abs(revenue_change):,.0f} ({revenue_change_pct:+.1f}%) in last update',
+                    'message': f'Revenue {change_type} of R${abs(revenue_change):,.0f} ({revenue_change_pct:+.1f}%) in last update',
                     'severity': severity,
                     'type': 'revenue_change',
                     'timestamp': current_time.isoformat(),
-                    'action_required': abs(revenue_change) > 1000000,
+                    'action_required': bool(abs(revenue_change) > 1000000),
                     'metric_value': revenue_change,
                     'threshold': 500000
                 })
@@ -512,7 +501,7 @@ async def generate_intelligent_alerts(metrics: BusinessMetrics):
                     'severity': 'medium',
                     'type': 'order_change',
                     'timestamp': current_time.isoformat(),
-                    'action_required': abs(order_change) > 3000,
+                    'action_required': bool(abs(order_change) > 3000),
                     'metric_value': order_change,
                     'threshold': 2000
                 })
@@ -549,7 +538,7 @@ async def generate_intelligent_alerts(metrics: BusinessMetrics):
             alerts.append({
                 'id': len(alerts) + 1,
                 'title': 'Low Average Order Value',
-                'message': f'AOV at ${metrics.avg_order_value:.2f} - implement upselling strategies',
+                'message': f'AOV at R${metrics.avg_order_value:.2f} - implement upselling strategies',
                 'severity': 'medium',
                 'type': 'revenue',
                 'timestamp': current_time.isoformat(),
@@ -561,7 +550,7 @@ async def generate_intelligent_alerts(metrics: BusinessMetrics):
             alerts.append({
                 'id': len(alerts) + 1,
                 'title': 'High Average Order Value',
-                'message': f'Excellent AOV of ${metrics.avg_order_value:.2f} - capitalize on premium trends',
+                'message': f'Excellent AOV of R${metrics.avg_order_value:.2f} - capitalize on premium trends',
                 'severity': 'low',
                 'type': 'revenue',
                 'timestamp': current_time.isoformat(),
@@ -583,181 +572,9 @@ async def generate_intelligent_alerts(metrics: BusinessMetrics):
         logger.error(f"Error generating alerts: {str(e)}")
 
 async def generate_intelligent_decisions(metrics: BusinessMetrics):
-    """Generate intelligent business decisions based on real-time metrics and changes"""
-    decisions = []
-    current_time = datetime.now()
-    
-    try:
-        decision_id = 1
-        
-        # Get previous metrics for trend analysis
-        previous_metrics = real_time_cache.get('previous_metrics')
-        
-        # Revenue-based decisions with multiple scenarios
-        if metrics.monthly_growth < -45:
-            decisions.append({
-                "id": decision_id,
-                "title": "Critical Revenue Emergency Response",
-                "description": f"Implement crisis management - revenue declining at {abs(metrics.monthly_growth):.1f}%",
-                "status": "critical",
-                "confidence_score": 0.98,
-                "financial_impact": metrics.total_revenue * 0.30,
-                "requires_approval": True,
-                "reasoning": f"Extreme revenue decline of {abs(metrics.monthly_growth):.1f}% threatens business survival",
-                "recommended_scenario": "Emergency cost reduction, immediate market intervention",
-                "created_at": current_time.isoformat(),
-                "priority": "critical",
-                "category": "crisis_management"
-            })
-            decision_id += 1
-        elif metrics.monthly_growth < -35:
-            decisions.append({
-                "id": decision_id,
-                "title": "Urgent Revenue Recovery Initiative",
-                "description": f"Deploy comprehensive recovery plan - growth at {metrics.monthly_growth:.1f}%",
-                "status": "urgent",
-                "confidence_score": 0.95,
-                "financial_impact": metrics.total_revenue * 0.25,
-                "requires_approval": True,
-                "reasoning": f"Severe revenue decline of {abs(metrics.monthly_growth):.1f}% requires aggressive action",
-                "recommended_scenario": "Market repositioning, promotional campaigns, cost optimization",
-                "created_at": current_time.isoformat(),
-                "priority": "critical",
-                "category": "revenue_recovery"
-            })
-            decision_id += 1
-        elif metrics.monthly_growth < -25:
-            decisions.append({
-                "id": decision_id,
-                "title": "Revenue Stabilization Program",
-                "description": f"Implement stabilization measures - decline at {abs(metrics.monthly_growth):.1f}%",
-                "status": "pending",
-                "confidence_score": 0.90,
-                "financial_impact": metrics.total_revenue * 0.15,
-                "requires_approval": True,
-                "reasoning": f"Significant revenue decline of {abs(metrics.monthly_growth):.1f}% needs strategic response",
-                "recommended_scenario": "Customer retention focus, market analysis, product optimization",
-                "created_at": current_time.isoformat(),
-                "priority": "high",
-                "category": "revenue_stabilization"
-            })
-            decision_id += 1
-        
-        # Order volume-based decisions
-        if metrics.total_orders > 108000:
-            decisions.append({
-                "id": decision_id,
-                "title": "Scale Operations for High Volume",
-                "description": f"Optimize for {metrics.total_orders:,} orders - capacity planning needed",
-                "status": "recommended",
-                "confidence_score": 0.88,
-                "financial_impact": metrics.avg_order_value * 5000,
-                "requires_approval": False,
-                "reasoning": "High order volume requires operational scaling",
-                "recommended_scenario": "Increase fulfillment capacity, optimize logistics",
-                "created_at": current_time.isoformat(),
-                "priority": "medium",
-                "category": "operations_scaling"
-            })
-            decision_id += 1
-        elif metrics.total_orders < 100000:
-            decisions.append({
-                "id": decision_id,
-                "title": "Order Volume Recovery Strategy",
-                "description": f"Boost orders from {metrics.total_orders:,} - marketing intervention needed",
-                "status": "pending",
-                "confidence_score": 0.85,
-                "financial_impact": metrics.avg_order_value * 8000,
-                "requires_approval": False,
-                "reasoning": "Order volume below target impacts revenue potential",
-                "recommended_scenario": "Targeted marketing, conversion optimization, customer acquisition",
-                "created_at": current_time.isoformat(),
-                "priority": "medium",
-                "category": "volume_recovery"
-            })
-            decision_id += 1
-        
-        # AOV-based decisions with dynamic thresholds
-        if metrics.avg_order_value < 130:
-            impact_multiplier = 2000 if metrics.avg_order_value < 120 else 1500
-            decisions.append({
-                "id": decision_id,
-                "title": "Average Order Value Enhancement",
-                "description": f"Increase AOV from ${metrics.avg_order_value:.2f} - revenue optimization opportunity",
-                "status": "pending",
-                "confidence_score": 0.82,
-                "financial_impact": (150 - metrics.avg_order_value) * impact_multiplier,
-                "requires_approval": False,
-                "reasoning": f"AOV at ${metrics.avg_order_value:.2f} below optimal range",
-                "recommended_scenario": "Cross-selling campaigns, bundle offers, premium product promotion",
-                "created_at": current_time.isoformat(),
-                "priority": "medium",
-                "category": "aov_optimization"
-            })
-            decision_id += 1
-        elif metrics.avg_order_value > 150:
-            decisions.append({
-                "id": decision_id,
-                "title": "Premium Strategy Expansion",
-                "description": f"Leverage high AOV of ${metrics.avg_order_value:.2f} - expand premium offerings",
-                "status": "recommended",
-                "confidence_score": 0.90,
-                "financial_impact": metrics.total_revenue * 0.08,
-                "requires_approval": False,
-                "reasoning": f"High AOV of ${metrics.avg_order_value:.2f} indicates premium market success",
-                "recommended_scenario": "Expand luxury product lines, premium service tiers",
-                "created_at": current_time.isoformat(),
-                "priority": "low",
-                "category": "premium_expansion"
-            })
-            decision_id += 1
-        
-        # Change-based decisions (if we have previous metrics)
-        if previous_metrics:
-            revenue_change = metrics.total_revenue - previous_metrics.total_revenue
-            if abs(revenue_change) > 800000:  # $800K change
-                change_type = "surge" if revenue_change > 0 else "drop"
-                decisions.append({
-                    "id": decision_id,
-                    "title": f"Revenue {change_type.title()} Response Plan",
-                    "description": f"Address ${abs(revenue_change):,.0f} revenue {change_type} - immediate analysis needed",
-                    "status": "urgent" if abs(revenue_change) > 1200000 else "pending",
-                    "confidence_score": 0.93,
-                    "financial_impact": abs(revenue_change) * 0.1,
-                    "requires_approval": abs(revenue_change) > 1000000,
-                    "reasoning": f"Significant revenue {change_type} of ${abs(revenue_change):,.0f} requires investigation",
-                    "recommended_scenario": f"Analyze {change_type} causes, adjust strategies accordingly",
-                    "created_at": current_time.isoformat(),
-                    "priority": "high" if abs(revenue_change) > 1000000 else "medium",
-                    "category": f"revenue_{change_type}_response"
-                })
-                decision_id += 1
-        
-        # Category optimization (always include but vary based on metrics)
-        if metrics.top_categories:
-            top_category = metrics.top_categories[0]
-            priority = "high" if metrics.monthly_growth < -30 else "medium" if metrics.monthly_growth < -20 else "low"
-            decisions.append({
-                "id": decision_id,
-                "title": f"Optimize {top_category['name']} Performance",
-                "description": f"Maximize {top_category['name']} category - current leader with ${top_category['revenue']:,.0f}",
-                "status": "approved",
-                "confidence_score": 0.94,
-                "financial_impact": top_category['revenue'] * 0.12,
-                "requires_approval": False,
-                "reasoning": f"{top_category['name']} generates highest revenue - optimization priority",
-                "recommended_scenario": "Inventory expansion, marketing focus, customer experience enhancement",
-                "created_at": current_time.isoformat(),
-                "priority": priority,
-                "category": "category_optimization"
-            })
-            decision_id += 1
-        
-        return decisions[-10:]  # Return last 10 decisions
-        
-    except Exception as e:
-        logger.error(f"Error generating decisions: {str(e)}")
-        return []
+    """Decisions made by the five-agent pipeline (Simulation -> Decision -> Governance) on the
+    replayed Olist days; see evaluation/run_pipeline.py."""
+    return replayed_decisions(10)
 
 @app.get("/")
 async def root():
@@ -825,60 +642,18 @@ async def get_dashboard_data():
                 }
             ],
             "ml_insights": {
-                "ml_models": {
-                    "revenue_forecasting": {
-                        "model_type": "ARIMA",
-                        "accuracy": 94.2,
-                        "last_trained": datetime.now().isoformat(),
-                        "predictions": [
-                            {"period": "Next 7 days", "value": metrics.total_revenue * 1.05, "confidence": 0.92},
-                            {"period": "Next 30 days", "value": metrics.total_revenue * 1.18, "confidence": 0.87}
-                        ]
-                    },
-                    "anomaly_detection": {
-                        "model_type": "Isolation Forest",
-                        "accuracy": 96.8,
-                        "anomalies_detected": len([a for a in real_time_cache.get('alerts', []) if 'anomaly' in a.get('type', '').lower()]),
-                        "last_scan": datetime.now().isoformat()
-                    }
-                },
-                "real_time_predictions": {
-                    "revenue_forecast_24h": metrics.total_revenue * (0.85 + random.uniform(-0.15, 0.25)),  # 24h revenue forecast
-                    "order_volume_forecast": int(metrics.total_orders * (0.88 + random.uniform(-0.12, 0.18))),  # Order volume forecast
-                    "churn_risk_customers": int(metrics.total_orders * (0.03 + random.uniform(-0.01, 0.02))),  # Churn risk customers
-                    "upsell_opportunities": int(metrics.total_orders * (0.15 + random.uniform(-0.05, 0.08))),  # Upsell opportunities
-                    "next_hour_revenue": metrics.total_revenue * (0.035 + random.uniform(-0.01, 0.015)),  # Hourly estimate
-                    "next_hour_orders": int(metrics.total_orders * (0.038 + random.uniform(-0.008, 0.012))),
-                    "confidence_score": 0.89 + random.uniform(-0.05, 0.08),
-                    "trend_direction": "up" if metrics.monthly_growth > 0 else "down",
-                    "prediction_timestamp": datetime.now().isoformat(),
-                    "model_used": "ARIMA + Linear Regression Ensemble"
-                },
+                "ml_models": model_cards(),
+                "real_time_predictions": real_predictions(),
                 "csv_data_insights": {
                     "total_records_processed": metrics.total_orders,
-                    "data_quality_score": 97.3,
-                    "processing_time_ms": 1247,
                     "last_processed": datetime.now().isoformat()
                 },
                 "business_intelligence": {
-                    "top_performing_categories": ["health_beauty", "watches_gifts", "bed_bath_table"],
-                    "growth_opportunities": ["sports_leisure", "auto", "baby"],
-                    "risk_factors": ["furniture_decor", "housewares"]
+                    "top_performing_categories": [c.get("name") for c in metrics.top_categories[:3]],
                 },
-                "recommendations": [
-                    "Increase marketing spend on health_beauty category (+15% ROI potential)",
-                    "Optimize inventory for watches_gifts during peak hours",
-                    "Implement dynamic pricing for bed_bath_table products",
-                    "Focus customer acquisition on sports_leisure segment"
-                ]
+                "recommendations": rfm_recommendations()
             },
-            "ml_performance": {
-                "models_active": 4,
-                "accuracy": 0.955,  # Send as decimal for frontend
-                "processing_time_ms": 1247,
-                "data_points_processed": metrics.total_orders,
-                "anomalies_detected": len([a for a in real_time_cache.get('alerts', []) if 'anomaly' in a.get('message', '').lower()])
-            },
+            "ml_performance": real_ml_performance(),
             "system_health": real_time_cache['system_health'],
             "data_freshness": {
                 "last_update": real_time_cache.get('last_update'),
@@ -916,13 +691,7 @@ async def get_advanced_analytics():
                 "forecasts": ml_insights.get('forecasts', []),
                 "anomalies": ml_insights.get('anomalies', []),
                 "trends": ml_insights.get('trends', {}),
-                "model_performance": {
-                    "data_points": 99441,
-                    "metrics_tracked": 5,
-                    "last_update": datetime.now().isoformat(),
-                    "accuracy": "92.3%",
-                    "confidence": "High"
-                }
+                "model_performance": model_cards()
             },
             "business_context": {
                 "current_revenue": metrics.total_revenue,
@@ -1001,19 +770,11 @@ async def get_trend_data(metric: str, period: str = "daily"):
         
         if metric in ['revenue', 'orders']:
             trend_data = data_processor.get_time_series_data(metric, period)
-        else:  # satisfaction
-            # Generate satisfaction trend based on reviews
-            trend_data = []
-            base_satisfaction = real_time_cache['business_metrics'].customer_satisfaction
-            for i in range(30):
-                date = (datetime.now() - timedelta(days=29-i)).date()
-                # Add some realistic variation
-                variation = np.random.normal(0, 0.1)
-                value = max(1.0, min(5.0, base_satisfaction + variation))
-                trend_data.append({
-                    'date': str(date),
-                    'value': round(value, 2)
-                })
+        else:  # satisfaction: mean review score per day, last 30 days of the Olist series
+            from services.olist_metrics import daily_metrics
+            recent = daily_metrics()["customer_satisfaction"].iloc[-30:]
+            trend_data = [{'date': str(d.date()), 'value': round(float(v), 2)}
+                          for d, v in recent.items()]
         
         return {
             "metric": metric,
@@ -1215,7 +976,7 @@ async def get_business_insights():
         
         business_insights = {
             "executive_summary": {
-                "total_revenue": f"${metrics.total_revenue:,.2f}",
+                "total_revenue": f"R${metrics.total_revenue:,.2f}",
                 "total_orders": f"{metrics.total_orders:,}",
                 "growth_rate": f"{metrics.monthly_growth:+.1f}%",
                 "satisfaction": f"{metrics.customer_satisfaction:.1f}/5.0"
@@ -1223,7 +984,7 @@ async def get_business_insights():
             "key_findings": [
                 f"Revenue growth of {metrics.monthly_growth:.1f}% indicates {'strong' if metrics.monthly_growth > 5 else 'moderate'} business performance",
                 f"Customer satisfaction at {metrics.customer_satisfaction:.1f}/5.0 {'exceeds' if metrics.customer_satisfaction > 4.0 else 'meets'} industry standards",
-                f"Top category '{metrics.top_categories[0]['name']}' generates ${metrics.top_categories[0]['revenue']:,.2f}" if metrics.top_categories else "Category analysis in progress",
+                f"Top category '{metrics.top_categories[0]['name']}' generates R${metrics.top_categories[0]['revenue']:,.2f}" if metrics.top_categories else "Category analysis in progress",
                 f"Geographic concentration in {list(metrics.geographic_distribution.keys())[0]} presents expansion opportunities" if metrics.geographic_distribution else "Geographic analysis in progress"
             ],
             "strategic_recommendations": [
@@ -1239,8 +1000,8 @@ async def get_business_insights():
                 "Ensure scalable infrastructure for growth"
             ],
             "market_opportunities": [
-                f"${metrics.total_revenue * 0.2:,.2f} potential revenue from geographic expansion",
-                f"${metrics.avg_order_value * 1.15:,.2f} target AOV through upselling",
+                f"R${metrics.total_revenue * 0.2:,.2f} potential revenue from geographic expansion",
+                f"R${metrics.avg_order_value * 1.15:,.2f} target AOV through upselling",
                 "Cross-selling opportunities in complementary categories",
                 "Premium service offerings for high-value customers"
             ]

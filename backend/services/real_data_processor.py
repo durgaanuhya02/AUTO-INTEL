@@ -171,34 +171,36 @@ class RealDataProcessor:
             )
     
     def _calculate_monthly_growth(self) -> float:
-        """Calculate month-over-month growth rate"""
+        """Month-over-month order growth between the last two substantially complete months.
+
+        The Olist data trails off after Aug 2018 (16 orders in Sep, 4 in Oct); comparing those stub
+        months would report a spurious collapse, so months with under 10% of the median monthly
+        volume are ignored.
+        """
         try:
             if 'orders' not in self.datasets:
-                return 5.2  # Default fallback
-            
+                return 0.0
+
             orders = self.datasets['orders'].copy()
             orders = orders.dropna(subset=['order_purchase_timestamp'])
-            
+
             if len(orders) == 0:
-                return 5.2
-            
-            # Group by month
+                return 0.0
+
             orders['month'] = orders['order_purchase_timestamp'].dt.to_period('M')
             monthly_orders = orders.groupby('month').size()
-            
+            monthly_orders = monthly_orders[monthly_orders >= 0.1 * monthly_orders.median()]
+
             if len(monthly_orders) < 2:
-                return 5.2
-            
-            # Calculate growth rate between last two months
+                return 0.0
+
             last_month = monthly_orders.iloc[-1]
             prev_month = monthly_orders.iloc[-2]
-            
-            growth_rate = ((last_month - prev_month) / prev_month) * 100 if prev_month > 0 else 0
-            return min(max(growth_rate, -50), 100)  # Cap between -50% and 100%
-            
+            return float((last_month - prev_month) / prev_month * 100) if prev_month > 0 else 0.0
+
         except Exception as e:
             logger.error(f"Error calculating monthly growth: {str(e)}")
-            return 5.2
+            return 0.0
     
     def _get_top_categories(self) -> List[Dict[str, Any]]:
         """Get top product categories by revenue"""

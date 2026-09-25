@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import AgentStatus from '../components/AgentStatus';
 import AlertPanel from '../components/AlertPanel';
 import DecisionPanel from '../components/DecisionPanel';
-import { 
+import {
   TrendingUp, TrendingDown, DollarSign, ShoppingCart, Users, Star,
   Activity, BarChart3, Database, Brain, Shield, Target, AlertTriangle,
   CheckCircle, Clock, Zap, Eye, Globe, Cpu, PieChart, LineChart,
@@ -56,8 +56,9 @@ interface DashboardData {
   };
   ml_performance?: {
     models_active: number;
-    accuracy: number;
-    processing_time_ms: number;
+    headline_metric_name: string;
+    headline_metric_value: number | null;
+    forecast_mape: number | null;
     data_points_processed: number;
     anomalies_detected: number;
   };
@@ -74,7 +75,6 @@ interface DataSource {
   status: 'healthy' | 'warning' | 'error';
   records: number;
   lastSync: string;
-  quality: number;
 }
 
 export default function EnterpriseDashboard() {
@@ -84,15 +84,15 @@ export default function EnterpriseDashboard() {
   const [activeTab, setActiveTab] = useState('overview');
   const [isLive, setIsLive] = useState(true);
 
-  // Mock data sources from CSV files
+  // Olist CSV files and their row counts
   const [dataSources] = useState<DataSource[]>([
-    { name: 'Orders Dataset', status: 'healthy', records: 99441, lastSync: 'Live', quality: 98.5 },
-    { name: 'Customers Dataset', status: 'healthy', records: 99441, lastSync: 'Live', quality: 97.2 },
-    { name: 'Products Dataset', status: 'healthy', records: 32951, lastSync: 'Live', quality: 99.1 },
-    { name: 'Payments Dataset', status: 'warning', records: 103886, lastSync: 'Live', quality: 95.8 },
-    { name: 'Reviews Dataset', status: 'healthy', records: 99224, lastSync: 'Live', quality: 96.7 },
-    { name: 'Geolocation Dataset', status: 'healthy', records: 1000163, lastSync: 'Live', quality: 94.3 },
-    { name: 'ML Models', status: 'healthy', records: 4, lastSync: 'Active', quality: 99.9 }
+    { name: 'Orders Dataset', status: 'healthy', records: 99441, lastSync: 'Loaded' },
+    { name: 'Order Items Dataset', status: 'healthy', records: 112650, lastSync: 'Loaded' },
+    { name: 'Customers Dataset', status: 'healthy', records: 99441, lastSync: 'Loaded' },
+    { name: 'Products Dataset', status: 'healthy', records: 32951, lastSync: 'Loaded' },
+    { name: 'Payments Dataset', status: 'healthy', records: 103886, lastSync: 'Loaded' },
+    { name: 'Reviews Dataset', status: 'healthy', records: 99224, lastSync: 'Loaded' },
+    { name: 'Geolocation Dataset', status: 'healthy', records: 1000163, lastSync: 'Loaded' }
   ]);
 
   useEffect(() => {
@@ -121,7 +121,7 @@ export default function EnterpriseDashboard() {
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD',
+      currency: 'BRL',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(value);
@@ -165,7 +165,7 @@ export default function EnterpriseDashboard() {
           <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Connection Error</h2>
           <p className="text-gray-600">Unable to connect to analytics backend</p>
-          <button 
+          <button
             onClick={fetchData}
             className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
           >
@@ -203,7 +203,7 @@ export default function EnterpriseDashboard() {
                 </p>
               </div>
             </div>
-            
+
             <div className="flex items-center space-x-6">
               <div className={`flex items-center space-x-2 px-3 py-2 rounded-lg ${
                 isLive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
@@ -211,13 +211,13 @@ export default function EnterpriseDashboard() {
                 <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
                 <span className="text-sm font-medium">{isLive ? 'Live' : 'Offline'}</span>
               </div>
-              
+
               <div className="text-right">
                 <p className="text-sm font-medium text-gray-900">Last Update</p>
                 <p className="text-xs text-gray-500">{lastUpdate}</p>
               </div>
-              
-              <button 
+
+              <button
                 onClick={fetchData}
                 className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
                 title="Refresh Data"
@@ -268,9 +268,9 @@ export default function EnterpriseDashboard() {
                       Live ML-Powered Analytics from {data.data_freshness?.source || 'Brazilian E-commerce Dataset'}
                     </p>
                     <p className="text-xs text-blue-700">
-                      {formatNumber(data.data_freshness?.records_processed || 0)} records processed • 
-                      Updates every 30 seconds • 
-                      Quality: {data.data_freshness?.data_quality || 'High'} • 
+                      {formatNumber(data.data_freshness?.records_processed || 0)} records processed •
+                      Updates every 30 seconds •
+                      Quality: {data.data_freshness?.data_quality || 'High'} •
                       ML Models: {data.ml_performance?.models_active || 4} Active
                     </p>
                   </div>
@@ -309,7 +309,7 @@ export default function EnterpriseDashboard() {
                 </p>
                 <div className="flex items-center space-x-2">
                   <div className="w-full bg-gray-200 rounded-full h-1.5">
-                    <div 
+                    <div
                       className="bg-green-500 h-1.5 rounded-full transition-all duration-500"
                       style={{ width: `${Math.min(100, (data.current_metrics.revenue / 20000000) * 100)}%` }}
                     />
@@ -393,8 +393,11 @@ export default function EnterpriseDashboard() {
                         <p className="text-sm text-gray-600">Active Models</p>
                       </div>
                       <div className="text-center p-3 bg-green-50 rounded-lg">
-                        <p className="text-2xl font-bold text-green-600">{(data.ml_performance.accuracy * 100).toFixed(1)}%</p>
-                        <p className="text-sm text-gray-600">Accuracy</p>
+                        <p className="text-2xl font-bold text-green-600">
+                          {data.ml_performance.headline_metric_value != null
+                            ? data.ml_performance.headline_metric_value.toFixed(2) : '—'}
+                        </p>
+                        <p className="text-sm text-gray-600">Anomaly detection F1 (test)</p>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
@@ -474,7 +477,7 @@ export default function EnterpriseDashboard() {
                       <div className="flex items-center justify-between mb-1">
                         <h4 className="font-medium text-green-800 text-sm">{decision.title}</h4>
                         <span className="text-xs text-green-600 font-medium">
-                          {Math.round(decision.confidence_score * 100)}% confidence
+                          score {decision.confidence_score.toFixed(2)}
                         </span>
                       </div>
                       <p className="text-green-700 text-xs">{decision.description}</p>
@@ -506,9 +509,14 @@ export default function EnterpriseDashboard() {
                           {model.status}
                         </span>
                         <span className="text-sm font-medium text-blue-600">
-                          {(model.accuracy * 100).toFixed(1)}%
+                          {model.metric_value != null
+                            ? (model.metric_name?.startsWith('MAPE')
+                                ? `${(model.metric_value * 100).toFixed(1)}%`
+                                : model.metric_value.toFixed(2))
+                            : formatNumber(model.details?.customers ?? 0)}
                         </span>
                       </div>
+                      <p className="text-xs text-gray-500 mt-1">{model.metric_name}</p>
                     </div>
                   ))}
                 </div>
@@ -520,7 +528,7 @@ export default function EnterpriseDashboard() {
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-bold text-gray-900 flex items-center">
                     <Activity className="w-5 h-5 text-blue-600 mr-2" />
-                    Real-time ML Predictions
+                    Forecasts and Customer Segments
                   </h3>
                   <div className="flex items-center space-x-2">
                     <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
@@ -535,22 +543,27 @@ export default function EnterpriseDashboard() {
                     <p className="text-2xl font-bold text-blue-600">
                       {formatCurrency(data.ml_insights.real_time_predictions.revenue_forecast_24h)}
                     </p>
-                    <p className="text-sm text-gray-600">24h Revenue Forecast</p>
-                    <p className="text-xs text-blue-500 mt-1">
-                      {data.ml_insights.real_time_predictions.confidence_score ? 
-                        `${(data.ml_insights.real_time_predictions.confidence_score * 100).toFixed(1)}% confidence` : 
-                        '89% confidence'}
+                    <p className="text-sm text-gray-600">
+                      Revenue forecast, {data.ml_insights.real_time_predictions.forecast_date}
                     </p>
+                    {data.ml_insights.real_time_predictions.revenue_interval_95 && (
+                      <p className="text-xs text-blue-500 mt-1">
+                        95% interval {formatCurrency(data.ml_insights.real_time_predictions.revenue_interval_95[0])}
+                        {' – '}{formatCurrency(data.ml_insights.real_time_predictions.revenue_interval_95[1])}
+                      </p>
+                    )}
                   </div>
                   <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
                     <div className="flex items-center justify-center mb-2">
                       <ShoppingCart className="w-5 h-5 text-green-600" />
                     </div>
                     <p className="text-2xl font-bold text-green-600">
-                      {formatNumber(data.ml_insights.real_time_predictions.order_volume_forecast)}
+                      {formatNumber(Math.round(data.ml_insights.real_time_predictions.order_volume_forecast))}
                     </p>
                     <p className="text-sm text-gray-600">Order Volume Forecast</p>
-                    <p className="text-xs text-green-500 mt-1">Next 24 hours</p>
+                    <p className="text-xs text-green-500 mt-1">
+                      {data.ml_insights.real_time_predictions.forecast_date}
+                    </p>
                   </div>
                   <div className="text-center p-4 bg-red-50 rounded-lg border border-red-200">
                     <div className="flex items-center justify-center mb-2">
@@ -559,8 +572,8 @@ export default function EnterpriseDashboard() {
                     <p className="text-2xl font-bold text-red-600">
                       {formatNumber(data.ml_insights.real_time_predictions.churn_risk_customers)}
                     </p>
-                    <p className="text-sm text-gray-600">Churn Risk Customers</p>
-                    <p className="text-xs text-red-500 mt-1">Requires attention</p>
+                    <p className="text-sm text-gray-600">High-Value Lapsing Customers</p>
+                    <p className="text-xs text-red-500 mt-1">RFM segment: win-back target</p>
                   </div>
                   <div className="text-center p-4 bg-purple-50 rounded-lg border border-purple-200">
                     <div className="flex items-center justify-center mb-2">
@@ -569,18 +582,20 @@ export default function EnterpriseDashboard() {
                     <p className="text-2xl font-bold text-purple-600">
                       {formatNumber(data.ml_insights.real_time_predictions.upsell_opportunities)}
                     </p>
-                    <p className="text-sm text-gray-600">Upsell Opportunities</p>
-                    <p className="text-xs text-purple-500 mt-1">Revenue potential</p>
+                    <p className="text-sm text-gray-600">High-Value New Customers</p>
+                    <p className="text-xs text-purple-500 mt-1">RFM segment: convert to repeat</p>
                   </div>
                 </div>
                 <div className="mt-4 p-3 bg-gray-50 rounded-lg">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-600">
-                      Model: {data.ml_insights.real_time_predictions.model_used || 'ARIMA + Linear Regression'}
+                      Model: {data.ml_insights.real_time_predictions.model_used}
+                      {data.ml_insights.real_time_predictions.revenue_test_mape != null &&
+                        ` (test MAPE ${data.ml_insights.real_time_predictions.revenue_test_mape.toFixed(1)}%)`}
                     </span>
                     <span className="text-gray-500">
-                      Updated: {data.ml_insights.real_time_predictions.prediction_timestamp ? 
-                        new Date(data.ml_insights.real_time_predictions.prediction_timestamp).toLocaleTimeString() : 
+                      Updated: {data.ml_insights.real_time_predictions.prediction_timestamp ?
+                        new Date(data.ml_insights.real_time_predictions.prediction_timestamp).toLocaleTimeString() :
                         'Live'}
                     </span>
                   </div>
@@ -607,30 +622,18 @@ export default function EnterpriseDashboard() {
                         {source.status}
                       </span>
                     </div>
-                    
+
                     <div className="space-y-2">
                       <div className="flex justify-between">
                         <span className="text-sm text-gray-600">Records</span>
                         <span className="text-sm font-medium text-gray-900">{formatNumber(source.records)}</span>
                       </div>
-                      
+
                       <div className="flex justify-between">
                         <span className="text-sm text-gray-600">Status</span>
                         <span className="text-sm text-blue-600">{source.lastSync}</span>
                       </div>
-                      
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-600">Quality</span>
-                        <div className="flex items-center space-x-2">
-                          <div className="w-12 h-2 bg-gray-200 rounded-full">
-                            <div 
-                              className="h-2 bg-green-500 rounded-full transition-all duration-300" 
-                              style={{width: `${source.quality}%`}}
-                            />
-                          </div>
-                          <span className="text-sm font-medium text-gray-900">{source.quality}%</span>
-                        </div>
-                      </div>
+
                     </div>
                   </div>
                 ))}
@@ -648,7 +651,7 @@ export default function EnterpriseDashboard() {
                   <p className="font-semibold text-gray-900">Data Ingestion</p>
                   <p className="text-green-600 text-sm">Healthy</p>
                 </div>
-                
+
                 <div className="text-center">
                   <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
                     <Cpu className="w-8 h-8 text-blue-600" />
@@ -656,7 +659,7 @@ export default function EnterpriseDashboard() {
                   <p className="font-semibold text-gray-900">ML Processing</p>
                   <p className="text-blue-600 text-sm">Active</p>
                 </div>
-                
+
                 <div className="text-center">
                   <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
                     <Shield className="w-8 h-8 text-purple-600" />
@@ -664,7 +667,7 @@ export default function EnterpriseDashboard() {
                   <p className="font-semibold text-gray-900">Data Quality</p>
                   <p className="text-purple-600 text-sm">Validated</p>
                 </div>
-                
+
                 <div className="text-center">
                   <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-3">
                     <Globe className="w-8 h-8 text-orange-600" />
